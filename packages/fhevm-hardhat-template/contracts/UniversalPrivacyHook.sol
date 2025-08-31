@@ -275,11 +275,17 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
     ) external nonReentrant {
         PoolId poolId = key.toId();
         
-        // Burn encrypted tokens from user
+        // Get encrypted token contract
         IFHERC20 encryptedToken = poolEncryptedTokens[poolId][currency];
         require(address(encryptedToken) != address(0), "Token not exists");
         
-        encryptedToken.burn(msg.sender, amount);
+        // Create encrypted amount for burning
+        euint128 encryptedAmount = FHE.asEuint128(uint128(amount));
+        FHE.allowThis(encryptedAmount);
+        FHE.allow(encryptedAmount, address(encryptedToken));
+        
+        // Burn encrypted tokens from user
+        encryptedToken.burnEncrypted(msg.sender, encryptedAmount);
         
         // Update reserves
         poolReserves[poolId][currency] -= amount;
