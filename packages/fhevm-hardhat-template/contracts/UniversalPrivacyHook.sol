@@ -89,9 +89,7 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
     
     bytes internal constant ZERO_BYTES = bytes("");
     
-    // FHE encrypted constants for reuse
-    euint128 private ENCRYPTED_ZERO;
-    euint128 private ENCRYPTED_ONE;
+    // FHE encrypted constants for reuse - removed as they're not used
 
     // =============================================================
     //                      STATE VARIABLES
@@ -121,13 +119,8 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
     // =============================================================
     
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
-        // Initialize FHE constants and grant contract access
-        ENCRYPTED_ZERO = FHE.asEuint128(0);
-        ENCRYPTED_ONE = FHE.asEuint128(1);
-        
-        // CRITICAL: Contract must have access to use these constants
-        FHE.allowThis(ENCRYPTED_ZERO);
-        FHE.allowThis(ENCRYPTED_ONE);
+        // No FHE initialization needed in constructor
+        // FHE operations will be done when actually needed
     }
 
     // =============================================================

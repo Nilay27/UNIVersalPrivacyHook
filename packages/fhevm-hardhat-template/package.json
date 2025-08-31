@@ -28,6 +28,7 @@
     "@uniswap/v4-core": "^1.0.2",
     "@uniswap/v4-periphery": "^1.0.3",
     "@zama-fhe/oracle-solidity": "^0.1.0",
+    "dotenv": "^17.2.1",
     "encrypted-types": "^0.0.4"
   },
   "devDependencies": {
