@@ -8,3 +8,11 @@ packages/*/.env
 packages/*/.turbo
 packages/*/coverage
 tmp*
+
+# Root level generated files
+package-lock.json
+
+# Documentation files (can be regenerated)
+IMPLEMENTATION_CONTEXT.md
+MIGRATION_TO_ZAMA.md
+README_PRIVACY_HOOK.md
