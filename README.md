@@ -6,11 +6,11 @@
   
   <p>
     <a href="#-overview">Overview</a> •
-    <a href="#-technical-architecture">Architecture</a> •
+    <a href="#️-technical-architecture">Architecture</a> •
     <a href="#-features">Features</a> •
     <a href="#-quick-start">Quick Start</a> •
-    <a href="#-demo">Demo</a> •
-    <a href="#-smart-contracts">Contracts</a>
+    <a href="#-smart-contracts">Contracts</a> •
+    <a href="#-demo">Demo</a>
   </p>
 </div>
 
@@ -418,8 +418,8 @@ We welcome contributions! Areas for improvement:
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## DEMO VIDEO:
-- **Video**: [Demo Walkthrough](https://loom.com/share/1429ab954de74fd087f356559e7c1b91)
+## 🎬 Demo
+- **Video**: [Demo Walkthrough](https://www.loom.com/share/1429ab954de74fd087f356559e7c1b91)
 
 ---
 
