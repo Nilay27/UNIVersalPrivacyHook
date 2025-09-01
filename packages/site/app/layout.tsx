@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
 import Image from "next/image";
+import { Toaster } from 'react-hot-toast';
 
 export const metadata: Metadata = {
   title: "Zama FHEVM SDK Quickstart",
@@ -28,6 +29,33 @@ export default async function RootLayout({
           </nav>
           <Providers>{children}</Providers>
         </main>
+        <Toaster 
+          position="bottom-right"
+          toastOptions={{
+            duration: 5000,
+            style: {
+              background: '#1f2937',
+              color: '#fff',
+              padding: '16px',
+              borderRadius: '12px',
+              fontSize: '14px',
+            },
+            success: {
+              duration: 4000,
+              iconTheme: {
+                primary: '#10b981',
+                secondary: '#fff',
+              },
+            },
+            error: {
+              duration: 4000,
+              iconTheme: {
+                primary: '#ef4444',
+                secondary: '#fff',
+              },
+            },
+          }}
+        />
       </body>
     </html>
   );

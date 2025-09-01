@@ -1,3 +1,5 @@
+export const UniversalPrivacyHookABI = {
+  "abi":
 [
   {
     "inputs": [
@@ -1526,3 +1528,4 @@
     "type": "function"
   }
 ]
+};
