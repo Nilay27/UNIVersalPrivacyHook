@@ -11,7 +11,10 @@ import toast from 'react-hot-toast';
 
 declare global {
   interface Window {
-    ethereum?: any;
+    ethereum?: {
+      request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+      isMetaMask?: boolean;
+    };
   }
 }
 
@@ -27,7 +30,7 @@ export function UniversalPrivacyHookDemo() {
   const { storage: fhevmDecryptionSignatureStorage } = useInMemoryStorage();
   
   const { instance: fhevmInstance } = useFhevm({
-    provider: provider as any,
+    provider: provider as any, // BrowserProvider type compatibility
     chainId: chainId,
     enabled: isConnected && isCorrectNetwork
   });
@@ -68,7 +71,6 @@ export function UniversalPrivacyHookDemo() {
   }>>([]);
   const [isLoadingIntents, setIsLoadingIntents] = useState(false);
   const [processedIntents, setProcessedIntents] = useState<Set<string>>(new Set());
-  const [lastTxHash, setLastTxHash] = useState<string | null>(null);
   
   // Load processed intents from local storage on mount
   useEffect(() => {
@@ -77,7 +79,7 @@ export function UniversalPrivacyHookDemo() {
       try {
         const parsed = JSON.parse(stored);
         setProcessedIntents(new Set(parsed));
-      } catch (e) {
+      } catch {
         console.error('Failed to parse processed intents from localStorage');
       }
     }
@@ -173,7 +175,7 @@ export function UniversalPrivacyHookDemo() {
     
     loadIntents();
     // No automatic refresh - only manual refresh to avoid timeouts
-  }, [signer, isCorrectNetwork, fetchUserIntents]);
+  }, [signer, isCorrectNetwork, fetchUserIntents, processedIntents]);
   
   // Decrypt USDC balance
   const handleDecryptUSDC = async () => {
@@ -289,8 +291,8 @@ export function UniversalPrivacyHookDemo() {
         prev.filter(intent => intent.id !== intentId)
       );
       
-      // Store last transaction hash
-      setLastTxHash(txHash);
+      // Log transaction hash
+      console.log('Execution completed with txHash:', txHash);
       
       // Refresh balances after execution
       setTimeout(async () => {
@@ -342,9 +344,10 @@ export function UniversalPrivacyHookDemo() {
         setSubmittedIntents(formattedIntents);
         setIsLoadingIntents(false);
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
       console.error('Failed to execute intent:', err);
-      toast.error(`Failed to execute intent: ${err.message || err}`);
+      toast.error(`Failed to execute intent: ${errorMessage}`);
     }
   };
 
@@ -356,9 +359,9 @@ export function UniversalPrivacyHookDemo() {
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: '0xaa36a7' }], // 0xaa36a7 is hex for 11155111 (Sepolia)
       });
-    } catch (switchError: any) {
+    } catch (switchError: unknown) {
       // This error code indicates that the chain has not been added to MetaMask
-      if (switchError.code === 4902) {
+      if (switchError && typeof switchError === 'object' && 'code' in switchError && switchError.code === 4902) {
         try {
           await window.ethereum.request({
             method: 'wallet_addEthereumChain',
@@ -423,9 +426,10 @@ export function UniversalPrivacyHookDemo() {
         setEncBalanceUSDC(encUSDC);
         setEncBalanceUSDT(encUSDT);
       }, 3000);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
       console.error('Deposit failed:', err);
-      toast.error(`Deposit failed: ${err.message || err}`);
+      toast.error(`Deposit failed: ${errorMessage}`);
     }
   };
 
@@ -480,7 +484,7 @@ export function UniversalPrivacyHookDemo() {
       console.log('Input proof length:', encrypted.inputProof.length, 'bytes');
       
       // Convert Uint8Array to hex string properly
-      const inputProofHex = '0x' + Array.from(new Uint8Array(encrypted.inputProof))
+      const inputProofHex = '0x' + Array.from(encrypted.inputProof as Uint8Array)
         .map(b => b.toString(16).padStart(2, '0'))
         .join('');
       
@@ -556,9 +560,10 @@ export function UniversalPrivacyHookDemo() {
       } else {
         console.error('Intent submission completed but no intent ID received');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
       console.error('Submit intent failed:', err);
-      toast.error(`Failed to submit intent: ${err.message || err}`);
+      toast.error(`Failed to submit intent: ${errorMessage}`);
     }
   };
 
@@ -1086,8 +1091,9 @@ export function UniversalPrivacyHookDemo() {
                     }
                   }, 3000);
                 }
-              } catch (err: any) {
-                toast.error(`Failed to mint tokens: ${err.message || err}`);
+              } catch (err: unknown) {
+                const errorMessage = err instanceof Error ? err.message : String(err);
+                toast.error(`Failed to mint tokens: ${errorMessage}`);
               }
             }}
             disabled={loading || !faucetAmount || parseFloat(faucetAmount) <= 0}

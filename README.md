@@ -5,6 +5,7 @@
   <p>Bringing complete privacy to DeFi swaps through Fully Homomorphic Encryption</p>
   
   <p>
+    <a href="https://universalprivatehook.vercel.app/" target="_blank">🚀 Live Demo</a> •
     <a href="#-overview">Overview</a> •
     <a href="#️-technical-architecture">Architecture</a> •
     <a href="#-features">Features</a> •
@@ -419,7 +420,8 @@ We welcome contributions! Areas for improvement:
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🎬 Demo
-- **Video**: [Demo Walkthrough](https://www.loom.com/share/1429ab954de74fd087f356559e7c1b91)
+- **Live Website**: [universalprivatehook.vercel.app](https://universalprivatehook.vercel.app/) - Try the app with Sepolia testnet
+- **Video Walkthrough**: [Demo on Loom](https://www.loom.com/share/1429ab954de74fd087f356559e7c1b91) - Complete feature demonstration
 
 ---
 
