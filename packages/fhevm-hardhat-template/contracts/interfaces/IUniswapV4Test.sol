@@ -21,9 +21,8 @@ interface IPoolModifyLiquidityTest {
 
 interface IPoolSwapTest {
     struct TestSettings {
-        bool withdrawTokens;
-        bool settleUsingTransfer;
-        bool currencyAlreadySent;
+        bool takeClaims;
+        bool settleUsingBurn;
     }
 
     struct SwapParams {
