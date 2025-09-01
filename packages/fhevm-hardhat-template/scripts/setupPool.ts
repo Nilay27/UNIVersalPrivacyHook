@@ -111,7 +111,7 @@ async function main() {
   console.log("✅ Correct deployer address\n");
 
   // Use our deployed and verified contracts
-  const hookAddress = "0x02aE81d1063c3FDC21a812E79408c3D3370E0080";
+  const hookAddress = "0x2295fc02c9C2e1D24aa7e6547a94dD7396a90080";
   const usdcAddress = "0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1";
   const usdtAddress = "0xB1D9519e953B8513a4754f9B33d37eDba90c001D";
 
@@ -164,211 +164,177 @@ async function main() {
   console.log("  Hook:", hookAddress);
 
   // // Step 1: Initialize pool
-  // console.log("\n2. Initializing pool...");
-  // try {
-  //   const initTx = await poolManager.initialize(poolKey, SQRT_PRICE_X96);
-  //   await initTx.wait();
-  //   console.log("  ✅ Pool initialized successfully!");
-  //   console.log("  Tx hash:", initTx.hash);
-  // } catch (error: any) {
-  //   if (error.message.includes("already initialized")) {
-  //     console.log("  ℹ️  Pool already initialized");
-  //   } else {
-  //     console.error("  ❌ Failed to initialize pool:", error.message);
-  //     return;
-  //   }
-  // }
+  console.log("\n2. Initializing pool...");
+  try {
+    const initTx = await poolManager.initialize(poolKey, SQRT_PRICE_X96);
+    await initTx.wait();
+    console.log("  ✅ Pool initialized successfully!");
+    console.log("  Tx hash:", initTx.hash);
+  } catch (error: any) {
+    if (error.message.includes("already initialized")) {
+      console.log("  ℹ️  Pool already initialized");
+    } else {
+      console.error("  ❌ Failed to initialize pool:", error.message);
+      return;
+    }
+  }
 
   // Step 2: Add liquidity using PoolModifyLiquidityTest
-  // console.log("\n3. Adding liquidity using PoolModifyLiquidityTest...");
+  console.log("\n3. Adding liquidity using PoolModifyLiquidityTest...");
   
-  // const modifyLiquidityTest = await ethers.getContractAt(
-  //   "IPoolModifyLiquidityTest",
-  //   SEPOLIA_CONTRACTS.PoolModifyLiquidityTest,
-  //   deployer
-  // );
-
-  // // Pre-deposit into hook (many hooks gate add-liquidity on internal balances)
-  // console.log("  Pre-approving & depositing into hook...");
-  // await mockUSDC.approve(hookAddress, LIQUIDITY_AMOUNT);
-  // await mockUSDT.approve(hookAddress, LIQUIDITY_AMOUNT);
-  // try {
-  //   const dep1 = await hook.deposit(
-  //     {
-  //       currency0: currency0,
-  //       currency1: currency1,
-  //       fee: FEE,
-  //       tickSpacing: TICK_SPACING,
-  //       hooks: hookAddress,
-  //     },
-  //     usdcAddress,
-  //     LIQUIDITY_AMOUNT
-  //   );
-  //   await dep1.wait();
-  //   const dep2 = await hook.deposit(
-  //     {
-  //       currency0: currency0,
-  //       currency1: currency1,
-  //       fee: FEE,
-  //       tickSpacing: TICK_SPACING,
-  //       hooks: hookAddress,
-  //     },
-  //     usdtAddress,
-  //     LIQUIDITY_AMOUNT
-  //   );
-  //   await dep2.wait();
-  //   console.log("  ✅ Deposited into hook for USDC & USDT");
-  // } catch (e: any) {
-  //   console.log("  ⚠️ Hook deposit step failed (may be optional):", e.shortMessage || e.message);
-  // }
-
-  // // Approve tokens to the test contract
-  // console.log("  Approving tokens...");
-  // await mockUSDC.approve(SEPOLIA_CONTRACTS.PoolModifyLiquidityTest, ethers.parseUnits("1000000", 6));
-  // await mockUSDT.approve(SEPOLIA_CONTRACTS.PoolModifyLiquidityTest, ethers.parseUnits("100000", 6));
-  // console.log("  ✅ Approved tokens");
-
-  // // Add liquidity
-  // console.log("  Adding liquidity...");
-
-  // // Compute a realistic liquidityDelta from desired token amounts and ticks
-  // const sqrtX96 = BigInt(SQRT_PRICE_X96); // current sqrt price (1:1)
-  // const sqrtLowerX96 = tickToSqrtPriceX96(TICK_LOWER);
-  // const sqrtUpperX96 = tickToSqrtPriceX96(TICK_UPPER);
-
-  // // Use up to LIQUIDITY_AMOUNT of EACH token (USDC & USDT) for minting
-  // const liquidityDelta = getLiquidityForAmounts(
-  //   sqrtX96,
-  //   sqrtLowerX96,
-  //   sqrtUpperX96,
-  //   LIQUIDITY_AMOUNT,
-  //   LIQUIDITY_AMOUNT
-  // );
-  // console.log("  Computed liquidityDelta:", liquidityDelta.toString());
-
-  // const modifyPositionParams = {
-  //   tickLower: TICK_LOWER,
-  //   tickUpper: TICK_UPPER,
-  //   liquidityDelta: liquidityDelta, // computed from desired token amounts
-  //   salt: ethers.ZeroHash,
-  // };
-
-  // // Preflight: balances / allowances
-  // const [usdcBal, usdtBal, usdcAllow, usdtAllow] = await Promise.all([
-  //   mockUSDC.balanceOf(deployer.address),
-  //   mockUSDT.balanceOf(deployer.address),
-  //   mockUSDC.allowance(deployer.address, SEPOLIA_CONTRACTS.PoolModifyLiquidityTest),
-  //   mockUSDT.allowance(deployer.address, SEPOLIA_CONTRACTS.PoolModifyLiquidityTest),
-  // ]);
-  // console.log("  Balances -> USDC:", usdcBal.toString(), "USDT:", usdtBal.toString());
-  // console.log("  Allowances -> USDC:", usdcAllow.toString(), "USDT:", usdtAllow.toString());
-
-  // try {
-  //   await modifyLiquidityTest.modifyLiquidity.staticCall(
-  //     poolKey,
-  //     modifyPositionParams,
-  //     "0x"
-  //   );
-  //   console.log("  ✅ staticCall: add-liquidity would succeed (no revert)");
-  // } catch (e: any) {
-  //   console.error("  ⚠️ staticCall revert:", e.shortMessage || e.message);
-  //   // Extra diagnostics
-  //   if (e.data) {
-  //     console.error("  ↳ raw error data:", e.data);
-  //   }
-  //   if (e.reason) {
-  //     console.error("  ↳ reason:", e.reason);
-  //   }
-  // }
-
-  // try {
-  //   const tx = await modifyLiquidityTest.modifyLiquidity(
-  //     poolKey,
-  //     modifyPositionParams,
-  //     "0x" // No hook data
-  //   );
-  //   await tx.wait();
-  //   console.log("  ✅ Liquidity added successfully!");
-  //   console.log("  Tx hash:", tx.hash);
-  // } catch (error: any) {
-  //   console.error("  ❌ Failed to add liquidity:", error.message);
-  //   console.log("  You may need to manually add liquidity through the UI");
-  // }
-
-// Step 3: Test swap using PoolSwapTest
-  console.log("\n4. Testing swap functionality...");
-  const swapTest = await ethers.getContractAt(
-    "IPoolSwapTest",
-    SEPOLIA_CONTRACTS.PoolSwapTest,
+  const modifyLiquidityTest = await ethers.getContractAt(
+    "IPoolModifyLiquidityTest",
+    SEPOLIA_CONTRACTS.PoolModifyLiquidityTest,
     deployer
   );
 
-  // Approve tokens for swap test
-  const swapAmount = ethers.parseUnits("10", 6); // 100 USDC
-  const allowanceAmount = ethers.parseUnits("100000", 6);
-  const approveTx = await mockUSDC.approve(SEPOLIA_CONTRACTS.PoolSwapTest, allowanceAmount);
-  await approveTx.wait();
-  console.log("  Approved 100000 USDC for test swap");
+  // // Approve tokens to the test contract
+  console.log("  Approving tokens...");
+  await mockUSDC.approve(SEPOLIA_CONTRACTS.PoolModifyLiquidityTest, ethers.parseUnits("1000000", 6));
+  await mockUSDT.approve(SEPOLIA_CONTRACTS.PoolModifyLiquidityTest, ethers.parseUnits("1000000", 6));
+  console.log("  ✅ Approved tokens");
 
-  const [allowToRouter, allowToPermit2] = await Promise.all([
-    mockUSDC.allowance(deployer.address, SEPOLIA_CONTRACTS.PoolSwapTest),
-    mockUSDC.allowance(deployer.address, SEPOLIA_CONTRACTS.Permit2),
-  ]);
-  console.log("  Allowances -> PoolSwapTest:", allowToRouter.toString(), "Permit2:", allowToPermit2.toString());
+  // // Add liquidity
+  console.log("  Adding liquidity...");
 
-  const zeroForOne = currency0 === usdcAddress; // Swap USDC for USDT
+  // Compute a realistic liquidityDelta from desired token amounts and ticks
+  const sqrtX96 = BigInt(SQRT_PRICE_X96); // current sqrt price (1:1)
+  const sqrtLowerX96 = tickToSqrtPriceX96(TICK_LOWER);
+  const sqrtUpperX96 = tickToSqrtPriceX96(TICK_UPPER);
 
-  const swapParams = {
-    zeroForOne: zeroForOne,
-    amountSpecified: swapAmount,
-    sqrtPriceLimitX96: zeroForOne ? MIN_SQRT_PRICE_PLUS_ONE : MAX_SQRT_PRICE_MINUS_ONE,
+  // Use up to LIQUIDITY_AMOUNT of EACH token (USDC & USDT) for minting
+  const liquidityDelta = getLiquidityForAmounts(
+    sqrtX96,
+    sqrtLowerX96,
+    sqrtUpperX96,
+    LIQUIDITY_AMOUNT,
+    LIQUIDITY_AMOUNT
+  );
+  console.log("  Computed liquidityDelta:", liquidityDelta.toString());
+
+  const modifyPositionParams = {
+    tickLower: TICK_LOWER,
+    tickUpper: TICK_UPPER,
+    liquidityDelta: liquidityDelta, // computed from desired token amounts
+    salt: ethers.ZeroHash,
   };
 
-    const testSettings = {
-      takeClaims: false,
-      settleUsingBurn: false
-    };
-
-    // Dry-run to surface precise revert reason & selector
-    try {
-      await swapTest.swap.staticCall(
-        poolKey,
-        swapParams,
-        testSettings,
-        "0x"
-      );
-      console.log("  ✅ staticCall: swap would succeed");
-    } catch (e: any) {
-      console.error("  ⚠️ staticCall revert:", e.shortMessage || e.message);
-      if (e.data) {
-        console.error("  ↳ raw error data:", e.data);
-        const decoded = decodeRevertData(e.data);
-        if (decoded) console.error("  ↳ decoded:", decoded);
-      }
-      if (e.reason) console.error("  ↳ reason:", e.reason);
-    }
+  // Preflight: balances / allowances
+  const [usdcBal, usdtBal, usdcAllow, usdtAllow] = await Promise.all([
+    mockUSDC.balanceOf(deployer.address),
+    mockUSDT.balanceOf(deployer.address),
+    mockUSDC.allowance(deployer.address, SEPOLIA_CONTRACTS.PoolModifyLiquidityTest),
+    mockUSDT.allowance(deployer.address, SEPOLIA_CONTRACTS.PoolModifyLiquidityTest),
+  ]);
+  console.log("  Balances -> USDC:", usdcBal.toString(), "USDT:", usdtBal.toString());
+  console.log("  Allowances -> USDC:", usdcAllow.toString(), "USDT:", usdtAllow.toString());
 
   try {
-    console.log("  Executing test swap...");
-    const swapTx = await swapTest.swap(
+    await modifyLiquidityTest.modifyLiquidity.staticCall(
       poolKey,
-      swapParams,
-      testSettings,
+      modifyPositionParams,
+      "0x"
+    );
+    console.log("  ✅ staticCall: add-liquidity would succeed (no revert)");
+  } catch (e: any) {
+    console.error("  ⚠️ staticCall revert:", e.shortMessage || e.message);
+    // Extra diagnostics
+    if (e.data) {
+      console.error("  ↳ raw error data:", e.data);
+    }
+    if (e.reason) {
+      console.error("  ↳ reason:", e.reason);
+    }
+  }
+
+  try {
+    const tx = await modifyLiquidityTest.modifyLiquidity(
+      poolKey,
+      modifyPositionParams,
       "0x" // No hook data
     );
-    await swapTx.wait();
-    console.log("  ✅ Test swap successful!");
-    console.log("  Tx hash:", swapTx.hash);
+    await tx.wait();
+    console.log("  ✅ Liquidity added successfully!");
+    console.log("  Tx hash:", tx.hash);
   } catch (error: any) {
-    console.error("  ⚠️  Test swap failed:", error.shortMessage || error.message);
-    if (error.data) {
-      console.error("  ↳ raw error data:", error.data);
-      const decoded = decodeRevertData(error.data);
-      if (decoded) console.error("  ↳ decoded:", decoded);
-    }
-    if (error.reason) console.error("  ↳ reason:", error.reason);
-    console.log("  This is expected if the hook requires special handling");
+    console.error("  ❌ Failed to add liquidity:", error.message);
+    console.log("  You may need to manually add liquidity through the UI");
   }
+
+  // Step 3: Test swap using PoolSwapTest
+  // console.log("\n4. Testing swap functionality...");
+  // const swapTest = await ethers.getContractAt(
+  //   "IPoolSwapTest",
+  //   SEPOLIA_CONTRACTS.PoolSwapTest,
+  //   deployer
+  // );
+
+  // // Approve tokens for swap test
+  // const swapAmount = ethers.parseUnits("10", 6); // 100 USDC
+  // const allowanceAmount = ethers.parseUnits("100000", 6);
+  // const approveTx = await mockUSDC.approve(SEPOLIA_CONTRACTS.PoolSwapTest, allowanceAmount);
+  // await approveTx.wait();
+  // console.log("  Approved 100000 USDC for test swap");
+
+  // const [allowToRouter, allowToPermit2] = await Promise.all([
+  //   mockUSDC.allowance(deployer.address, SEPOLIA_CONTRACTS.PoolSwapTest),
+  //   mockUSDC.allowance(deployer.address, SEPOLIA_CONTRACTS.Permit2),
+  // ]);
+  // console.log("  Allowances -> PoolSwapTest:", allowToRouter.toString(), "Permit2:", allowToPermit2.toString());
+
+  // const zeroForOne = currency0 === usdcAddress; // Swap USDC for USDT
+
+  // const swapParams = {
+  //   zeroForOne: zeroForOne,
+  //   amountSpecified: swapAmount,
+  //   sqrtPriceLimitX96: zeroForOne ? MIN_SQRT_PRICE_PLUS_ONE : MAX_SQRT_PRICE_MINUS_ONE,
+  // };
+
+  //   const testSettings = {
+  //     takeClaims: false,
+  //     settleUsingBurn: false
+  //   };
+
+  //   // Dry-run to surface precise revert reason & selector
+  //   try {
+  //     await swapTest.swap.staticCall(
+  //       poolKey,
+  //       swapParams,
+  //       testSettings,
+  //       "0x"
+  //     );
+  //     console.log("  ✅ staticCall: swap would succeed");
+  //   } catch (e: any) {
+  //     console.error("  ⚠️ staticCall revert:", e.shortMessage || e.message);
+  //     if (e.data) {
+  //       console.error("  ↳ raw error data:", e.data);
+  //       const decoded = decodeRevertData(e.data);
+  //       if (decoded) console.error("  ↳ decoded:", decoded);
+  //     }
+  //     if (e.reason) console.error("  ↳ reason:", e.reason);
+  //   }
+
+  // try {
+  //   console.log("  Executing test swap...");
+  //   const swapTx = await swapTest.swap(
+  //     poolKey,
+  //     swapParams,
+  //     testSettings,
+  //     "0x" // No hook data
+  //   );
+  //   await swapTx.wait();
+  //   console.log("  ✅ Test swap successful!");
+  //   console.log("  Tx hash:", swapTx.hash);
+  // } catch (error: any) {
+  //   console.error("  ⚠️  Test swap failed:", error.shortMessage || error.message);
+  //   if (error.data) {
+  //     console.error("  ↳ raw error data:", error.data);
+  //     const decoded = decodeRevertData(error.data);
+  //     if (decoded) console.error("  ↳ decoded:", decoded);
+  //   }
+  //   if (error.reason) console.error("  ↳ reason:", error.reason);
+  //   console.log("  This is expected if the hook requires special handling");
+  // }
 
   console.log("\n========================================");
   console.log("Pool Setup Complete!");

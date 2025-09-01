@@ -12,6 +12,7 @@ import * as dotenv from "dotenv";
 
 import "./tasks/accounts";
 import "./tasks/FHECounter";
+import "./tasks/UniversalPrivacyHook";
 
 // Load .env file if it exists
 dotenv.config();

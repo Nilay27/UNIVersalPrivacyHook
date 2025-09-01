@@ -9,7 +9,7 @@ async function main() {
   const [signer] = await ethers.getSigners();
   
   // Our deployed contracts
-  const hookAddress = "0x02aE81d1063c3FDC21a812E79408c3D3370E0080";
+  const hookAddress = "0x2295fc02c9C2e1D24aa7e6547a94dD7396a90080";
   const usdcAddress = "0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1";
   const usdtAddress = "0xB1D9519e953B8513a4754f9B33d37eDba90c001D";
   

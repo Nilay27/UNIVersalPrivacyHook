@@ -54,6 +54,7 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
     event EncryptedTokenCreated(PoolId indexed poolId, Currency indexed currency, address token);
     event Deposited(PoolId indexed poolId, Currency indexed currency, address indexed user, uint256 amount);
     event IntentSubmitted(PoolId indexed poolId, Currency tokenIn, Currency tokenOut, address indexed user, bytes32 intentId);
+    event IntentDecrypted(bytes32 indexed intentId, uint128 decryptedAmount);
     event IntentExecuted(PoolId indexed poolId, bytes32 indexed intentId, uint128 amountIn, uint128 amountOut);
     event Withdrawn(PoolId indexed poolId, Currency indexed currency, address indexed user, address recipient, uint256 amount);
 
@@ -80,6 +81,8 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
         address owner;           // User who submitted the intent
         uint64 deadline;         // Expiration timestamp
         bool processed;          // Whether intent has been executed
+        bool decrypted;          // Whether amount has been decrypted
+        uint128 decryptedAmount; // Decrypted amount (available after callback)
         PoolKey poolKey;         // Pool key for the swap
     }
 
@@ -231,7 +234,9 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
             owner: msg.sender,
             deadline: deadline,
             processed: false,
-            poolKey: key
+            poolKey: key,
+            decrypted: false,
+            decryptedAmount: 0
         });
         
         // Request decryption of the amount  
@@ -318,12 +323,12 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
     // =============================================================
     
     /**
-     * @dev Callback function called by FHE Gateway with decrypted intent amount
+     * @dev Lightweight callback function called by FHE Gateway with decrypted intent amount
      * @param requestId The request ID from FHE Gateway
      * @param decryptedAmount The decrypted amount for the swap
      * @param signatures Signatures from the gateway for verification
      */
-    function finalizeIntent(uint256 requestId, uint128 decryptedAmount, bytes[] memory signatures) public {
+    function finalizeIntent(uint256 requestId, uint128 decryptedAmount, bytes[] memory signatures) external {
         FHE.checkSignatures(requestId, signatures);
         
         bytes32 intentId = requestToIntentId[requestId];
@@ -331,12 +336,33 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
         
         Intent storage intent = intents[intentId];
         require(!intent.processed, "Intent already processed");
+        require(!intent.decrypted, "Intent already decrypted");
         
-        // Execute the intent with the decrypted amount
-        _executeIntent(intent.poolKey, intentId, decryptedAmount);
+        // Store the decrypted amount
+        intent.decryptedAmount = decryptedAmount;
+        intent.decrypted = true;
+        
+        // Emit event
+        emit IntentDecrypted(intentId, decryptedAmount);
         
         // Clean up mapping
         delete requestToIntentId[requestId];
+    }
+    
+    /**
+     * @dev Execute a decrypted intent - can be called by anyone
+     * @param intentId The ID of the intent to execute
+     */
+    function executeIntent(bytes32 intentId) external nonReentrant {
+        Intent storage intent = intents[intentId];
+        
+        require(intent.owner != address(0), "Intent does not exist");
+        require(intent.decrypted, "Intent not yet decrypted");
+        require(!intent.processed, "Intent already processed");
+        require(block.timestamp <= intent.deadline, "Intent expired");
+        
+        // Execute the intent
+        _executeIntent(intent.poolKey, intentId, intent.decryptedAmount);
     }
     
     /**
@@ -356,57 +382,12 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
         uint128 amount
     ) internal {
         Intent storage intent = intents[intentId];
-        PoolId poolId = key.toId();
         
-        // Determine swap direction
-        bool zeroForOne = intent.tokenIn == key.currency0;
+        // Prepare data for unlock callback
+        bytes memory unlockData = abi.encode(key, intentId, amount, intent.tokenIn, intent.tokenOut, intent.owner);
         
-        // Execute swap using hook's reserves
-        SwapParams memory swapParams = SwapParams({
-            zeroForOne: zeroForOne,
-            amountSpecified: -int256(uint256(amount)),
-            sqrtPriceLimitX96: zeroForOne ? 
-                TickMath.MIN_SQRT_PRICE + 1 : 
-                TickMath.MAX_SQRT_PRICE - 1
-        });
-        
-        BalanceDelta delta = poolManager.swap(key, swapParams, ZERO_BYTES);
-        
-        // Calculate output amount and settle with pool manager
-        uint128 outputAmount;
-        if (zeroForOne) {
-            // Swapping token0 for token1
-            outputAmount = uint128(uint256(int256(delta.amount1())));
-            // Hook owes token0 to pool, pool owes token1 to hook
-            key.currency0.settle(poolManager, address(this), amount, false);
-            key.currency1.take(poolManager, address(this), outputAmount, false);
-        } else {
-            // Swapping token1 for token0
-            outputAmount = uint128(uint256(int256(-delta.amount0())));
-            // Hook owes token1 to pool, pool owes token0 to hook
-            key.currency1.settle(poolManager, address(this), amount, false);
-            key.currency0.take(poolManager, address(this), outputAmount, false);
-        }
-        
-        // Update hook reserves
-        poolReserves[poolId][intent.tokenIn] -= amount;
-        poolReserves[poolId][intent.tokenOut] += outputAmount;
-        
-        // Mint encrypted output tokens to user using trivial encryption
-        IFHERC20 outputToken = poolEncryptedTokens[poolId][intent.tokenOut];
-        // Create output token if it doesn't exist
-        if (address(outputToken) == address(0)) {
-            outputToken = _getOrCreateEncryptedToken(poolId, intent.tokenOut);
-        }
-        euint128 encryptedOutput = FHE.asEuint128(outputAmount);
-        FHE.allow(encryptedOutput, address(this));
-        FHE.allow(encryptedOutput, address(outputToken));
-        outputToken.mintEncrypted(intent.owner, encryptedOutput);
-        
-        // Mark intent as processed
-        intent.processed = true;
-        
-        emit IntentExecuted(poolId, intentId, amount, outputAmount);
+        // Execute through unlock mechanism - all swap logic happens in unlockCallback
+        poolManager.unlock(unlockData);
     }
     
     // =============================================================
@@ -460,7 +441,58 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
     // =============================================================
     
     function unlockCallback(bytes calldata data) external override onlyPoolManager returns (bytes memory) {
-        // This can be used for batched operations if needed
+        // Decode the intent execution data
+        (PoolKey memory key, bytes32 intentId, uint128 amount, Currency tokenIn, Currency tokenOut, address owner) = 
+            abi.decode(data, (PoolKey, bytes32, uint128, Currency, Currency, address));
+        
+        PoolId poolId = key.toId();
+        
+        // Determine swap direction
+        bool zeroForOne = tokenIn == key.currency0;
+        
+        // Execute swap
+        SwapParams memory swapParams = SwapParams({
+            zeroForOne: zeroForOne,
+            amountSpecified: -int256(uint256(amount)),
+            sqrtPriceLimitX96: zeroForOne ? 
+                TickMath.MIN_SQRT_PRICE + 1 : 
+                TickMath.MAX_SQRT_PRICE - 1
+        });
+        
+        BalanceDelta delta = poolManager.swap(key, swapParams, ZERO_BYTES);
+        
+        // Calculate output amount and settle with pool manager
+        uint128 outputAmount;
+        if (zeroForOne) {
+            // Swapping token0 for token1
+            outputAmount = uint128(uint256(int256(delta.amount1())));
+            // Hook owes token0 to pool, pool owes token1 to hook
+            key.currency0.settle(poolManager, address(this), amount, false);
+            key.currency1.take(poolManager, address(this), outputAmount, false);
+        } else {
+            // Swapping token1 for token0
+            outputAmount = uint128(uint256(int256(-delta.amount0())));
+            // Hook owes token1 to pool, pool owes token0 to hook
+            key.currency1.settle(poolManager, address(this), amount, false);
+            key.currency0.take(poolManager, address(this), outputAmount, false);
+        }
+        
+        // Update hook reserves
+        poolReserves[poolId][tokenIn] -= amount;
+        poolReserves[poolId][tokenOut] += outputAmount;
+        
+        // Mint encrypted output tokens to user
+        IFHERC20 outputToken = poolEncryptedTokens[poolId][tokenOut];
+        if (address(outputToken) == address(0)) {
+            outputToken = _getOrCreateEncryptedToken(poolId, tokenOut);
+        }
+        euint128 encryptedOutput = FHE.asEuint128(outputAmount);
+        FHE.allowThis(encryptedOutput);
+        FHE.allow(encryptedOutput, address(outputToken));
+        outputToken.mintEncrypted(owner, encryptedOutput);
+        
+        emit IntentExecuted(poolId, intentId, amount, outputAmount);
+        
         return ZERO_BYTES;
     }
 }
