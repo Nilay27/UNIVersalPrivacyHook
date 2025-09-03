@@ -2,7 +2,7 @@ import { ethers, fhevm } from "hardhat";
 
 // Deployed contract addresses on Sepolia
 const DEPLOYED_CONTRACTS = {
-  UniversalPrivacyHook: "0x2295fc02c9C2e1D24aa7e6547a94dD7396a90080", // Your deployed hook
+  UniversalPrivacyHook: "0x90a3Ca02cc80F34A105eFDfDaC8F061F8F770080", // Your deployed hook
   MockUSDC: "0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1", // Will load from deployments
   MockUSDT: "0xB1D9519e953B8513a4754f9B33d37eDba90c001D", // Will load from deployments
   PoolManager: "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
@@ -92,14 +92,20 @@ async function main() {
     console.log("Approved", ethers.formatUnits(depositAmount, 6), "USDC");
     
     // Step 4: Check if encrypted token exists (optional)
-    const poolId = "0xEF50B5D3FB43D3B95C88FD9C386D92631B575036F0044CA74050A78089D42D96"
+    const poolId = "0x1706511516D9D7794D66A45EE230280F1B1D1D479311E7AAF38746C339CFA653"
     
     
     
     // Step 5: Deposit USDC
     console.log("\nDepositing USDC to hook...");
-    const depositTx = await hook.deposit(poolKey, currency0, depositAmount);
+    const gasEstimate = await hook.deposit.estimateGas(poolKey, currency0, depositAmount);
+    const gasLimit = (gasEstimate * 120n) / 100n; // 20% buffer
+    console.log("Gas estimate:", gasEstimate.toString());
+    console.log("Using gas limit:", gasLimit.toString());
+    
+    const depositTx = await hook.deposit(poolKey, currency0, depositAmount, { gasLimit });
     console.log("Transaction sent:", depositTx.hash);
+    console.log("Waiting for confirmation...");
     
     const receipt = await depositTx.wait();
     console.log("Transaction confirmed in block:", receipt.blockNumber);

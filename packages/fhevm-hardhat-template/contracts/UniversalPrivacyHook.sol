@@ -39,6 +39,7 @@ import {Queue} from "./Queue.sol";
 
 // Token & Security
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 // FHE - Zama FHEVM
@@ -56,6 +57,7 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
     event IntentSubmitted(PoolId indexed poolId, Currency tokenIn, Currency tokenOut, address indexed user, bytes32 intentId);
     event IntentDecrypted(bytes32 indexed intentId, uint128 decryptedAmount);
     event IntentExecuted(PoolId indexed poolId, bytes32 indexed intentId, uint128 amountIn, uint128 amountOut);
+    event IntentDeleted(PoolId indexed poolId, bytes32 indexed intentId, address indexed owner);
     event Withdrawn(PoolId indexed poolId, Currency indexed currency, address indexed user, address recipient, uint256 amount);
 
     // =============================================================
@@ -391,6 +393,35 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
     }
     
     // =============================================================
+    //                      INTENT MANAGEMENT
+    // =============================================================
+    
+    function deleteIntent(bytes32 intentId) external nonReentrant {
+        Intent storage intent = intents[intentId];
+        
+        // Check intent exists and belongs to caller
+        require(intent.owner != address(0), "Intent does not exist");
+        require(intent.owner == msg.sender, "Not intent owner");
+        require(!intent.processed, "Cannot delete processed intent");
+        
+        // Get the encrypted token to refund using the stored poolKey
+        PoolId poolId = intent.poolKey.toId();
+        IFHERC20 encryptedToken = poolEncryptedTokens[poolId][intent.tokenIn];
+        require(address(encryptedToken) != address(0), "Encrypted token not found");
+        
+        // Transfer the encrypted tokens back to the user
+        // These were transferred from user to hook in submitIntent
+        FHE.allowThis(intent.encAmount);
+        FHE.allow(intent.encAmount, address(encryptedToken));
+        encryptedToken.transferEncrypted(msg.sender, intent.encAmount);
+        
+        // Delete the intent from storage completely
+        delete intents[intentId];
+        
+        emit IntentDeleted(poolId, intentId, msg.sender);
+    }
+    
+    // =============================================================
     //                      HELPER FUNCTIONS
     // =============================================================
     
@@ -431,9 +462,14 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
         return poolIntentQueues[poolId];
     }
     
-    function _getCurrencySymbol(Currency currency) internal pure returns (string memory) {
-        // This is a placeholder - in real implementation would query token metadata
-        return "TOKEN";
+    function _getCurrencySymbol(Currency currency) internal view returns (string memory) {
+        // Try to get the symbol from the ERC20 token
+        try IERC20Metadata(Currency.unwrap(currency)).symbol() returns (string memory symbol) {
+            return symbol;
+        } catch {
+            // Fallback if token doesn't implement symbol()
+            return "TOKEN";
+        }
     }
     
     // =============================================================
@@ -450,10 +486,10 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
         // Determine swap direction
         bool zeroForOne = tokenIn == key.currency0;
         
-        // Execute swap
+        // Execute swap with EXACT INPUT (negative amount in V4)
         SwapParams memory swapParams = SwapParams({
             zeroForOne: zeroForOne,
-            amountSpecified: -int256(uint256(amount)),
+            amountSpecified: -int256(uint256(amount)),  // Negative for exact input in V4
             sqrtPriceLimitX96: zeroForOne ? 
                 TickMath.MIN_SQRT_PRICE + 1 : 
                 TickMath.MAX_SQRT_PRICE - 1
@@ -461,20 +497,32 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
         
         BalanceDelta delta = poolManager.swap(key, swapParams, ZERO_BYTES);
         
-        // Calculate output amount and settle with pool manager
+        // Read signed deltas
+        int128 d0 = delta.amount0();
+        int128 d1 = delta.amount1();
+        
+        // Settle what we owe (negative), take what we're owed (positive)
+        if (d0 < 0) {
+            key.currency0.settle(poolManager, address(this), uint128(-d0), false);
+        }
+        if (d1 < 0) {
+            key.currency1.settle(poolManager, address(this), uint128(-d1), false);
+        }
+        if (d0 > 0) {
+            key.currency0.take(poolManager, address(this), uint128(d0), false);
+        }
+        if (d1 > 0) {
+            key.currency1.take(poolManager, address(this), uint128(d1), false);
+        }
+        
+        // Calculate output amount from the positive delta of the output currency
         uint128 outputAmount;
-        if (zeroForOne) {
-            // Swapping token0 for token1
-            outputAmount = uint128(uint256(int256(delta.amount1())));
-            // Hook owes token0 to pool, pool owes token1 to hook
-            key.currency0.settle(poolManager, address(this), amount, false);
-            key.currency1.take(poolManager, address(this), outputAmount, false);
+        if (tokenOut == key.currency0) {
+            require(d0 > 0, "No token0 output");
+            outputAmount = uint128(d0);
         } else {
-            // Swapping token1 for token0
-            outputAmount = uint128(uint256(int256(-delta.amount0())));
-            // Hook owes token1 to pool, pool owes token0 to hook
-            key.currency1.settle(poolManager, address(this), amount, false);
-            key.currency0.take(poolManager, address(this), outputAmount, false);
+            require(d1 > 0, "No token1 output");
+            outputAmount = uint128(d1);
         }
         
         // Update hook reserves
@@ -490,6 +538,9 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
         FHE.allowThis(encryptedOutput);
         FHE.allow(encryptedOutput, address(outputToken));
         outputToken.mintEncrypted(owner, encryptedOutput);
+        
+        // Mark intent as processed
+        intents[intentId].processed = true;
         
         emit IntentExecuted(poolId, intentId, amount, outputAmount);
         

@@ -3,7 +3,7 @@ import type { TaskArguments } from "hardhat/types";
 
 // Deployed contract addresses on Sepolia
 const DEPLOYED_CONTRACTS = {
-  UniversalPrivacyHook: "0x2295fc02c9C2e1D24aa7e6547a94dD7396a90080",
+  UniversalPrivacyHook: "0x90a3Ca02cc80F34A105eFDfDaC8F061F8F770080",
   MockUSDC: "0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1",
   MockUSDT: "0xB1D9519e953B8513a4754f9B33d37eDba90c001D",
   PoolManager: "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
@@ -11,7 +11,7 @@ const DEPLOYED_CONTRACTS = {
 
 const FEE = 3000;
 const TICK_SPACING = 60;
-const POOL_ID = "0xEF50B5D3FB43D3B95C88FD9C386D92631B575036F0044CA74050A78089D42D96";
+const POOL_ID = "0x1706511516D9D7794D66A45EE230280F1B1D1D479311E7AAF38746C339CFA653";
 
 /**
  * Test deposit functionality
@@ -71,8 +71,14 @@ task("task:test-deposit", "Test deposit to UniversalPrivacyHook")
     
     // Deposit
     console.log("\nDepositing USDC to hook...");
-    const depositTx = await hook.deposit(poolKey, currency0, depositAmount);
+    const gasEstimate = await hook.deposit.estimateGas(poolKey, currency0, depositAmount);
+    const gasLimit = (gasEstimate * 120n) / 100n; // 20% buffer
+    console.log("Gas estimate:", gasEstimate.toString());
+    console.log("Using gas limit:", gasLimit.toString());
+    
+    const depositTx = await hook.deposit(poolKey, currency0, depositAmount, { gasLimit });
     console.log("Transaction sent:", depositTx.hash);
+    console.log("Waiting for confirmation...");
     
     const receipt = await depositTx.wait();
     console.log("Transaction confirmed in block:", receipt.blockNumber);
@@ -170,7 +176,7 @@ task("task:test-intent", "Test submit intent to UniversalPrivacyHook")
     console.log("- Amount:", swapAmount / 10n**6n, "tokens (encrypted)");
     console.log("- Deadline:", new Date(deadline * 1000).toLocaleString());
     
-    const submitTx = await hook.submitIntent(
+    const gasEstimate = await hook.submitIntent.estimateGas(
       poolKey,
       tokenIn,
       tokenOut,
@@ -178,8 +184,22 @@ task("task:test-intent", "Test submit intent to UniversalPrivacyHook")
       encryptedInput.inputProof,
       deadline
     );
+    const gasLimit = (gasEstimate * 120n) / 100n; // 20% buffer
+    console.log("\nGas estimate:", gasEstimate.toString());
+    console.log("Using gas limit:", gasLimit.toString());
+    
+    const submitTx = await hook.submitIntent(
+      poolKey,
+      tokenIn,
+      tokenOut,
+      encryptedInput.handles[0],
+      encryptedInput.inputProof,
+      deadline,
+      { gasLimit }
+    );
     
     console.log("\nTransaction sent:", submitTx.hash);
+    console.log("Waiting for confirmation...");
     const receipt = await submitTx.wait();
     console.log("Transaction confirmed in block:", receipt.blockNumber);
     

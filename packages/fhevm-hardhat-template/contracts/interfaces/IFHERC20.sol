@@ -23,6 +23,8 @@ interface IFHERC20 is IERC20 {
     // -------- Encrypted Transfer Functions --------
     function transferFromEncrypted(address from, address to, externalEuint128 amount, bytes calldata inputProof) external returns (euint128);
     function transferFromEncrypted(address from, address to, euint128 amount) external returns (euint128);
+    function transferEncrypted(address to, externalEuint128 amount, bytes calldata inputProof) external returns (euint128);
+    function transferEncrypted(address to, euint128 amount) external returns (euint128);
 
     // -------- Decrypt Balance Functions --------
     function requestBalanceDecryption(address user) external returns(uint256);

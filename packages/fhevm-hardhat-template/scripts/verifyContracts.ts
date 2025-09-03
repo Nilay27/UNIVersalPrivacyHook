@@ -7,7 +7,7 @@ async function main() {
 
   // Actual deployed contracts
   const contracts = {
-    UniversalPrivacyHook: "0x2295fc02c9C2e1D24aa7e6547a94dD7396a90080",
+    UniversalPrivacyHook: "0x90a3Ca02cc80F34A105eFDfDaC8F061F8F770080",
     MockUSDC: "0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1",
     MockUSDT: "0xB1D9519e953B8513a4754f9B33d37eDba90c001D",
     DeterministicDeployFactory: "0xC43192FA7dE17d93e03a80FcaB68Ff0Cb0c358cf",

@@ -38,7 +38,7 @@ export const useUniversalPrivacyHook = () => {
       const allowance = await token.allowance(await signer.getAddress(), CONTRACTS.UniversalPrivacyHook);
       
       // Approve if needed (with 2x the amount for safety)
-      const approvalAmount = parsedAmount * 2n;
+      const approvalAmount = parsedAmount * BigInt(2);
       if (allowance < approvalAmount) {
         console.log('Approving token spend...');
         const approveTx = await token.approve(CONTRACTS.UniversalPrivacyHook, approvalAmount);
@@ -464,8 +464,53 @@ export const useUniversalPrivacyHook = () => {
     }
   }, [signer]);
 
+  const withdraw = useCallback(async (currency: 'USDC' | 'USDT', amount: string, recipient?: string) => {
+    if (!signer) {
+      setError('Please connect your wallet');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Get the pool key
+      const poolKey = getPoolKey();
+      
+      // Get currency address
+      const currencyAddress = currency === 'USDC' ? CONTRACTS.MockUSDC : CONTRACTS.MockUSDT;
+      
+      // Parse amount (assuming 6 decimals for both USDC and USDT)
+      const parsedAmount = ethers.parseUnits(amount, 6);
+      
+      // Use sender as recipient if no recipient provided
+      const finalRecipient = recipient || await signer.getAddress();
+      
+      // Create contract instance
+      const hook = new ethers.Contract(CONTRACTS.UniversalPrivacyHook, UniversalPrivacyHookABI.abi, signer);
+      
+      // Withdraw with gas buffer
+      console.log('Withdrawing tokens...');
+      const estimatedGas = await hook.withdraw.estimateGas(poolKey, currencyAddress, parsedAmount, finalRecipient);
+      const gasLimit = estimatedGas * BigInt(120) / BigInt(100);
+      
+      const withdrawTx = await hook.withdraw(poolKey, currencyAddress, parsedAmount, finalRecipient, { gasLimit });
+      await withdrawTx.wait();
+      console.log('Withdraw confirmed');
+      
+      return withdrawTx.hash;
+    } catch (err: any) {
+      console.error('Withdraw error:', err);
+      setError(err.message || 'Withdraw failed');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [signer]);
+
   return {
     deposit,
+    withdraw,
     submitIntent,
     executeIntent,
     getEncryptedBalance,

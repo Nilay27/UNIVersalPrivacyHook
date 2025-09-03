@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
-import Image from "next/image";
 import { Toaster } from 'react-hot-toast';
+import { NavBar } from '../components/NavBar';
 
 export const metadata: Metadata = {
-  title: "Zama FHEVM SDK Quickstart",
-  description: "Zama FHEVM SDK Quickstart app",
+  title: "Universal Privacy Hook - Professional DeFi Trading",
+  description: "Private swaps powered by Fully Homomorphic Encryption on Uniswap V4",
 };
 
 export default async function RootLayout({
@@ -16,29 +16,39 @@ export default async function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`zama-bg text-foreground antialiased`}>
-        <div className="fixed inset-0 w-full h-full zama-bg z-[-20] min-w-[850px]"></div>
-        <main className="flex flex-col max-w-screen-lg mx-auto pb-20 min-w-[850px]">
-          <nav className="flex w-full px-3 md:px-0 h-fit py-10 justify-between items-center">
-            <Image
-              src="/zama-logo.svg"
-              alt="Zama Logo"
-              width={120}
-              height={120}
-            />
-          </nav>
-          <Providers>{children}</Providers>
-        </main>
+      <body className={`antialiased`}>
+        <div className="fixed inset-0 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: "url('/BackgroundImage.png')" }}></div>
+        
+        {/* Professional App Shell */}
+        <Providers>
+          <div className="flex flex-col min-h-screen">
+            {/* Top Navigation Bar */}
+            <nav className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/90 backdrop-blur-md shadow-sm">
+              <div className="container mx-auto px-4">
+                <div className="flex h-16 items-center justify-between">
+                  <NavBar />
+                </div>
+              </div>
+            </nav>
+            
+            {/* Main Content */}
+            <main className="flex-1 container mx-auto px-4 py-8">
+              {children}
+            </main>
+          </div>
+        </Providers>
         <Toaster 
           position="bottom-right"
           toastOptions={{
             duration: 5000,
             style: {
-              background: '#1f2937',
-              color: '#fff',
+              background: '#ffffff',
+              color: '#111827',
               padding: '16px',
-              borderRadius: '12px',
+              borderRadius: '8px',
               fontSize: '14px',
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
             },
             success: {
               duration: 4000,
@@ -50,7 +60,7 @@ export default async function RootLayout({
             error: {
               duration: 4000,
               iconTheme: {
-                primary: '#ef4444',
+                primary: '#f43f5e',
                 secondary: '#fff',
               },
             },
