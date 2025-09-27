@@ -146,13 +146,17 @@ contract HybridFHERC20 is ERC20, IFHERC20, SepoliaConfig {
         return requestId;
     }
 
-    function finalizeBalanceDecryption(uint256 requestId, uint128 decryptedBalance, bytes[] memory signatures) public {
-        FHE.checkSignatures(requestId, signatures);
+    function finalizeBalanceDecryption(uint256 requestId, bytes memory cleartexts, bytes memory decryptionProof) public {
+        // Verify the decryption proof and signatures
+        FHE.checkSignatures(requestId, cleartexts, decryptionProof);
+
+        // Decode the decrypted value(s)
+        (uint128 decryptedBalance) = abi.decode(cleartexts, (uint128));
+
         address user = _decryptRequests[requestId];
         require(user != address(0), "Invalid request ID");
-        
-        // You can emit an event or store the result
-        // For now, we'll just delete the request
+
+        // Handle decryptedBalance as needed
         delete _decryptRequests[requestId];
     }
 
@@ -203,14 +207,19 @@ contract HybridFHERC20 is ERC20, IFHERC20, SepoliaConfig {
         FHE.allow(burnAmount, msg.sender);
     }
 
-    function finalizeUnwrap(uint256 requestId, uint128 amount, bytes[] memory signatures) public {
-        FHE.checkSignatures(requestId, signatures);
+    function finalizeUnwrap(uint256 requestId, bytes memory cleartexts, bytes memory decryptionProof) public {
+        // Verify the decryption proof and signatures
+        FHE.checkSignatures(requestId, cleartexts, decryptionProof);
+
+        // Decode the decrypted value(s)
+        (uint128 amount) = abi.decode(cleartexts, (uint128));
+
         UnwrapRequest memory request = _unwrapRequests[requestId];
         require(request.user != address(0), "Invalid request ID");
-        
+
         // Burn encrypted balance
         _burnEnc(request.user, request.burnAmount);
-        
+
         // Mint public balance
         _mint(request.user, amount);
         

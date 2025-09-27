@@ -381,51 +381,118 @@ export const useUniversalPrivacyHook = () => {
   }, [signer]);
 
   const decryptBalance = useCallback(async (
-    encryptedHandle: string, 
+    encryptedHandle: string,
     tokenAddress: string,
     fhevmInstance: any,
     fhevmDecryptionSignatureStorage: any
   ) => {
     if (!signer || !provider || !fhevmInstance) return null;
-    
+
     try {
-      // Import the storage utility
-      const { FhevmDecryptionSignature } = await import('../fhevm/FhevmDecryptionSignature');
-      
-      // Load or sign the decryption signature
-      const sig = await FhevmDecryptionSignature.loadOrSign(
-        fhevmInstance,
-        [tokenAddress as `0x${string}`],
-        signer,
-        fhevmDecryptionSignatureStorage
-      );
-      
-      if (!sig) {
-        console.error('Unable to build FHEVM decryption signature');
-        return null;
+      // Follow the exact documentation approach for v0.2.0
+      console.log('Starting decryption for handle:', encryptedHandle);
+
+      // Generate a keypair for this decryption
+      const keypair = fhevmInstance.generateKeypair();
+      console.log('Generated keypair');
+
+      // The handle from the contract is already in the correct format
+      // It's a euint128 handle represented as bytes32
+      let ciphertextHandle = encryptedHandle;
+
+      // Ensure it has 0x prefix and is lowercase
+      if (!ciphertextHandle.startsWith('0x')) {
+        ciphertextHandle = '0x' + ciphertextHandle;
       }
-      
-      // Decrypt the handle using FHEVM
-      const res = await fhevmInstance.userDecrypt(
-        [{ handle: encryptedHandle, contractAddress: tokenAddress }],
-        sig.privateKey,
-        sig.publicKey,
-        sig.signature,
-        sig.contractAddresses,
-        sig.userAddress,
-        sig.startTimestamp,
-        sig.durationDays
+
+      // Convert to lowercase for consistency
+      ciphertextHandle = ciphertextHandle.toLowerCase();
+
+      console.log('Formatted handle:', ciphertextHandle);
+      console.log('Handle length:', ciphertextHandle.length, '(should be 66 for 0x + 64 hex chars)');
+      console.log('Token address:', tokenAddress);
+
+      // Ensure contract address is checksummed
+      const checksummedAddress = ethers.getAddress(tokenAddress);
+
+      // Prepare handle-contract pairs
+      const handleContractPairs = [
+        {
+          handle: ciphertextHandle,
+          contractAddress: checksummedAddress,
+        },
+      ];
+
+      // Set timestamps - ensure we're using seconds, not milliseconds
+      const now = Date.now();
+      const startTimeStamp = Math.floor(now / 1000);
+      const durationDays = 10;
+
+      // Debug: Check if timestamp is reasonable
+      const dateCheck = new Date(startTimeStamp * 1000);
+      console.log('Current date/time:', dateCheck.toISOString());
+      console.log('Current timestamp (seconds):', startTimeStamp, 'Duration days:', durationDays);
+
+      // Convert to strings for the API
+      const startTimeStampStr = startTimeStamp.toString();
+      const durationDaysStr = durationDays.toString();
+      const contractAddresses = [checksummedAddress];
+
+      console.log('Creating EIP712 message...');
+      // Create EIP712 message with string parameters
+      const eip712 = fhevmInstance.createEIP712(
+        keypair.publicKey,
+        contractAddresses,
+        startTimeStampStr,
+        durationDaysStr
       );
-      
-      console.log('Decryption result:', res);
-      
-      // The result is an object with the handle as the key
-      if (res && res[encryptedHandle] !== undefined) {
+
+      console.log('Signing typed data...');
+      // Sign the typed data
+      const signature = await signer.signTypedData(
+        eip712.domain,
+        {
+          UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification,
+        },
+        eip712.message,
+      );
+
+      const userAddress = await signer.getAddress();
+      const cleanSignature = signature.replace("0x", "");
+
+      console.log('Calling userDecrypt with params:', {
+        handleContractPairs,
+        publicKey: keypair.publicKey.substring(0, 20) + '...',
+        signature: cleanSignature.substring(0, 20) + '...',
+        contractAddresses,
+        userAddress,
+        startTimeStamp: startTimeStampStr,
+        durationDays: durationDaysStr,
+      });
+
+      // Call userDecrypt exactly as in documentation
+      const result = await fhevmInstance.userDecrypt(
+        handleContractPairs,
+        keypair.privateKey,
+        keypair.publicKey,
+        cleanSignature,
+        contractAddresses,
+        userAddress,
+        startTimeStampStr,
+        durationDaysStr,
+      );
+
+      console.log('Decryption result:', result);
+
+      // Get decrypted value using the ciphertext handle as key
+      const decryptedValue = result[ciphertextHandle];
+
+      if (decryptedValue !== undefined) {
         // Convert decrypted value to readable format (assuming 6 decimals)
-        const decryptedValue = BigInt(res[encryptedHandle]);
-        return ethers.formatUnits(decryptedValue, 6);
+        return ethers.formatUnits(BigInt(decryptedValue), 6);
       }
-      
+
+      console.log('No decrypted value found in result');
       return null;
     } catch (err) {
       console.error('Error decrypting balance:', err);

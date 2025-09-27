@@ -111,7 +111,7 @@ async function main() {
   console.log("✅ Correct deployer address\n");
 
   // Use our deployed and verified contracts
-  const hookAddress = "0x90a3Ca02cc80F34A105eFDfDaC8F061F8F770080";
+  const hookAddress = "0xf5DB4551075284285245549aa2f108fFbC9E0080";
   const usdcAddress = "0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1";
   const usdtAddress = "0xB1D9519e953B8513a4754f9B33d37eDba90c001D";
 
@@ -170,13 +170,31 @@ async function main() {
     const gasLimit = (gasEstimate * 120n) / 100n; // 20% buffer
     console.log("  Gas estimate:", gasEstimate.toString());
     console.log("  Using gas limit:", gasLimit.toString());
-    
+
     const initTx = await poolManager.initialize(poolKey, SQRT_PRICE_X96, { gasLimit });
     console.log("  Tx hash:", initTx.hash);
     console.log("  Waiting for confirmation...");
-    
-    await initTx.wait();
+
+    const receipt = await initTx.wait();
     console.log("  ✅ Pool initialized successfully!");
+
+    // Extract pool ID from Initialize event
+    const initializeEvent = receipt?.logs.find((log: any) => {
+      try {
+        const parsed = poolManager.interface.parseLog(log);
+        return parsed?.name === 'Initialize';
+      } catch {
+        return false;
+      }
+    });
+
+    if (initializeEvent) {
+      const parsedEvent = poolManager.interface.parseLog(initializeEvent);
+      const poolId = parsedEvent?.args[0]; // First indexed argument is the pool ID
+      console.log("\n  🔑 Pool ID (from Initialize event):");
+      console.log("     ", poolId);
+      console.log("      (Use this ID for other operations)");
+    }
   } catch (error: any) {
     if (error.message.includes("already initialized")) {
       console.log("  ℹ️  Pool already initialized");

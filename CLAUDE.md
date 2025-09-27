@@ -1,0 +1,1 @@
+- NEVER create unnecessary files unless absolutely required, if we are adding a new feature, no need to create a new test file for it, change the  existing test file/feature file for it. I will mention when new file is needed

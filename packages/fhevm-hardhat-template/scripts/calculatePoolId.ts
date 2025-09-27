@@ -3,7 +3,7 @@ import { ethers } from "hardhat";
 async function main() {
   // Your deployed addresses
   const contracts = {
-    UniversalPrivacyHook: "0x90a3Ca02cc80F34A105eFDfDaC8F061F8F770080",
+    UniversalPrivacyHook: "0xf5DB4551075284285245549aa2f108fFbC9E0080",
     MockUSDC: "0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1",
     MockUSDT: "0xB1D9519e953B8513a4754f9B33d37eDba90c001D",
   };

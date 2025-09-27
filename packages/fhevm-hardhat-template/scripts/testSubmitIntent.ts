@@ -5,7 +5,7 @@ const { ethers, deployments, fhevm } = hre;
 
 // Deployed contract addresses on Sepolia
 const DEPLOYED_CONTRACTS = {
-  UniversalPrivacyHook: "0x90a3Ca02cc80F34A105eFDfDaC8F061F8F770080", // Your deployed hook
+  UniversalPrivacyHook: "0xf5DB4551075284285245549aa2f108fFbC9E0080", // Your deployed hook
   MockUSDC: "0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1", // Will load from deployments
   MockUSDT: "0xB1D9519e953B8513a4754f9B33d37eDba90c001D", // Will load from deployments
   PoolManager: "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
@@ -62,7 +62,7 @@ async function main() {
   try {
     // Step 1: Check encrypted token balance
     // Use the actual poolId from the Initialize event
-    const poolId = "0x1706511516D9D7794D66A45EE230280F1B1D1D479311E7AAF38746C339CFA653";
+    const poolId = "0x45ED5ADDCE08D124120CAB1576A4B57D2FDC3AAC9D108E2722593D6B0BB1DA8C";
     
     const encryptedTokenAddress = await hook.poolEncryptedTokens(poolId, currency0);
     console.log("\nEncrypted token address for currency0:", encryptedTokenAddress);

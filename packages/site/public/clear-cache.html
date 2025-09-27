@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Cache - Universal Privacy Hook</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        .success {
+            color: #10b981;
+            margin-top: 20px;
+        }
+        .error {
+            color: #ef4444;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Clear Browser Cache</h1>
+        <p>If you're experiencing redirect issues or seeing old content, use these options to clear your browser cache:</p>
+
+        <button onclick="clearServiceWorkers()">Clear Service Workers</button>
+        <button onclick="clearAllStorage()">Clear All Storage</button>
+        <button onclick="hardReload()">Hard Reload</button>
+
+        <div id="status"></div>
+
+        <h3 style="margin-top: 30px;">Manual Steps:</h3>
+        <ol>
+            <li><strong>Chrome/Edge:</strong> Press Ctrl+Shift+Delete (Windows) or Cmd+Shift+Delete (Mac)</li>
+            <li>Select "Cached images and files"</li>
+            <li>Choose "All time" for time range</li>
+            <li>Click "Clear data"</li>
+            <li>Restart your browser</li>
+        </ol>
+
+        <p style="margin-top: 20px;">
+            <a href="/" style="color: #3b82f6; text-decoration: none;">← Return to App</a>
+        </p>
+    </div>
+
+    <script>
+        function showStatus(message, isError = false) {
+            const status = document.getElementById('status');
+            status.className = isError ? 'error' : 'success';
+            status.innerHTML = message;
+        }
+
+        async function clearServiceWorkers() {
+            try {
+                if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for(let registration of registrations) {
+                        await registration.unregister();
+                    }
+                    showStatus('✓ Service Workers cleared successfully!');
+                } else {
+                    showStatus('No Service Workers found.', true);
+                }
+            } catch (error) {
+                showStatus('Error clearing Service Workers: ' + error.message, true);
+            }
+        }
+
+        async function clearAllStorage() {
+            try {
+                // Clear localStorage
+                if (window.localStorage) {
+                    window.localStorage.clear();
+                }
+
+                // Clear sessionStorage
+                if (window.sessionStorage) {
+                    window.sessionStorage.clear();
+                }
+
+                // Clear cookies for this domain
+                document.cookie.split(";").forEach(function(c) {
+                    document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+                });
+
+                // Clear IndexedDB
+                if (window.indexedDB) {
+                    const databases = await indexedDB.databases();
+                    databases.forEach(db => {
+                        if (db.name) {
+                            indexedDB.deleteDatabase(db.name);
+                        }
+                    });
+                }
+
+                // Clear Cache Storage
+                if ('caches' in window) {
+                    const names = await caches.keys();
+                    await Promise.all(names.map(name => caches.delete(name)));
+                }
+
+                showStatus('✓ All storage cleared successfully!');
+
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            } catch (error) {
+                showStatus('Error clearing storage: ' + error.message, true);
+            }
+        }
+
+        function hardReload() {
+            showStatus('Performing hard reload...');
+            setTimeout(() => {
+                window.location.href = '/?cache-bust=' + Date.now();
+            }, 500);
+        }
+    </script>
+</body>
+</html>
