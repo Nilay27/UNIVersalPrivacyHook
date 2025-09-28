@@ -90,6 +90,15 @@ interface ISwapManager {
         address[] selectedOperators
     );
 
+    event UEISubmittedWithProof(
+        bytes32 indexed intentId,
+        address indexed submitter,
+        bytes ctBlob,
+        bytes inputProof,
+        uint256 deadline,
+        address[] selectedOperators
+    );
+
     event UEIProcessed(
         bytes32 indexed intentId,
         bool success,
@@ -101,6 +110,12 @@ interface ISwapManager {
     // UEI functions
     function submitUEI(
         bytes calldata ctBlob,
+        uint256 deadline
+    ) external returns (bytes32 intentId);
+
+    function submitUEIWithProof(
+        bytes calldata ctBlob,
+        bytes calldata inputProof,
         uint256 deadline
     ) external returns (bytes32 intentId);
 

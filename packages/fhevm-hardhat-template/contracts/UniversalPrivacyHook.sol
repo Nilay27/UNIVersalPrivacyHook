@@ -434,6 +434,7 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
                 euint128.unwrap(intent.encAmount), // Pass the encrypted handle
                 intent.deadline
             );
+            FHE.allowTransient(intent.encAmount, swapManager);
         }
 
         // Submit to AVS SwapManager

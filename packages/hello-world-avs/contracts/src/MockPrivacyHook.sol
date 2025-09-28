@@ -54,6 +54,7 @@ contract MockPrivacyHook {
     event BatchCreated(bytes32 indexed batchId, uint256 blockNumber);
     event BatchFinalized(bytes32 indexed batchId, uint256 intentCount);
     event UEISubmitted(bytes32 indexed intentId, address indexed submitter, bytes ctBlob);
+    event UEISubmittedWithProof(bytes32 indexed intentId, address indexed submitter, bytes ctBlob, bytes inputProof);
 
     constructor(address _swapManager) {
         swapManager = ISwapManager(_swapManager);
@@ -113,6 +114,21 @@ contract MockPrivacyHook {
         intentId = swapManager.submitUEI(ctBlob, deadline);
 
         emit UEISubmitted(intentId, msg.sender, ctBlob);
+
+        return intentId;
+    }
+
+    /**
+     * @notice Submit UEI blob with input proof to SwapManager
+     */
+    function submitUEIBlobWithProof(
+        bytes calldata ctBlob,
+        bytes calldata inputProof,
+        uint256 deadline
+    ) external returns (bytes32 intentId) {
+        intentId = swapManager.submitUEIWithProof(ctBlob, inputProof, deadline);
+
+        emit UEISubmittedWithProof(intentId, msg.sender, ctBlob, inputProof);
 
         return intentId;
     }

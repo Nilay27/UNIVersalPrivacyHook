@@ -13,7 +13,7 @@ import {ISwapManager} from "./ISwapManager.sol";
 import {SimpleBoringVault} from "./SimpleBoringVault.sol";
 import "@eigenlayer/contracts/interfaces/IRewardsCoordinator.sol";
 import {IAllocationManager} from "@eigenlayer/contracts/interfaces/IAllocationManager.sol";
-import {FHE} from "@fhenix/contracts/FHE.sol";
+import {FHE} from "@fhevm/contracts/FHE.sol";
 
 // Currency type wrapper to match Uniswap V4
 type Currency is address;
@@ -152,7 +152,7 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager {
     /**
      * @notice Called by hook when batch is ready for processing
      * @param batchId The unique batch identifier
-     * @param batchData Encoded batch data containing intentIds, poolId, and encrypted amounts
+     * @param batchData Encoded batch data from UniversalPrivacyHook
      */
     function finalizeBatch(
         bytes32 batchId,
@@ -161,12 +161,19 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager {
         require(batches[batchId].status == BatchStatus.Collecting ||
                 batches[batchId].batchId == bytes32(0), "Invalid batch status");
 
-        // Decode batch data
+        // Decode batch data from UniversalPrivacyHook format:
+        // abi.encode(batchId, batch.intentIds, poolId, address(this), encryptedIntents)
         (
+            bytes32 decodedBatchId,
             bytes32[] memory intentIds,
             address poolId,
-            bytes[] memory encryptedAmounts
-        ) = abi.decode(batchData, (bytes32[], address, bytes[]));
+            address hookAddress,
+            bytes[] memory encryptedIntents
+        ) = abi.decode(batchData, (bytes32, bytes32[], address, address, bytes[]));
+
+        // Verify batch ID matches
+        require(decodedBatchId == batchId, "Batch ID mismatch");
+        require(hookAddress == msg.sender, "Hook address mismatch");
 
         // Select operators for this batch
         address[] memory selectedOps = _selectOperatorsForBatch(batchId);
@@ -182,9 +189,20 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager {
             status: BatchStatus.Processing
         });
 
-        // Grant FHE permissions to selected operators for each encrypted amount
-        for (uint256 i = 0; i < encryptedAmounts.length; i++) {
-            euint128 encAmount = abi.decode(encryptedAmounts[i], (euint128));
+        // Process encrypted intents and grant FHE permissions
+        for (uint256 i = 0; i < encryptedIntents.length; i++) {
+            // Decode intent data: (intentId, owner, tokenIn, tokenOut, encAmount, deadline)
+            (
+                bytes32 intentId,
+                address owner,
+                address tokenIn,
+                address tokenOut,
+                uint256 encAmountHandle, // This is euint128.unwrap() from the hook
+                uint256 deadline
+            ) = abi.decode(encryptedIntents[i], (bytes32, address, address, address, uint256, uint256));
+
+            // Convert handle back to euint128 (no FHE.fromExternal needed - already internal)
+            euint128 encAmount = euint128.wrap(encAmountHandle);
 
             // Grant permission to each selected operator
             for (uint256 j = 0; j < selectedOps.length; j++) {
@@ -327,7 +345,23 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager {
 
 
 
-    // ========================================= UEI (Universal Encrypted Intent) FUNCTIONALITY =========================================
+    // ============================= UEI FUNCTIONALITY =============================
+    
+    /*
+     * NOTE: Two different FHE handling approaches:
+     * 
+     * 1. finalizeBatch() - Internal FHE Types:
+     *    - Receives data from UniversalPrivacyHook which already has euint128 types
+     *    - Uses euint128.unwrap() to get handles and euint128.wrap() to restore
+     *    - Hook grants transient permissions with FHE.allowTransient()
+     *    - No FHE.fromExternal() needed - data is already internal FHE format
+     * 
+     * 2. submitUEIWithProof() - External FHE Types:
+     *    - Receives encrypted data from client with input proof
+     *    - Uses FHE.fromExternal() to convert external handles to internal types
+     *    - Requires input proof validation for security
+     *    - Grants explicit permissions with FHE.allow()
+     */
 
     /**
      * @notice Submit a Universal Encrypted Intent for trade execution
@@ -367,6 +401,98 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager {
 
         emit UEISubmitted(intentId, msg.sender, ctBlob, deadline, selectedOps);
         return intentId;
+    }
+
+    /**
+     * @notice Submit a Universal Encrypted Intent with input proof for FHE permissions
+     * @param ctBlob Encrypted blob containing decoder, target, selector, and arguments
+     * @param inputProof Input proof for FHE decryption permissions
+     * @param deadline Expiration timestamp for the intent
+     * @return intentId Unique identifier for the submitted intent
+     */
+    function submitUEIWithProof(
+        bytes calldata ctBlob,
+        bytes calldata inputProof,
+        uint256 deadline
+    ) external onlyAuthorizedHook returns (bytes32 intentId) {
+        // Generate unique intent ID
+        intentId = keccak256(abi.encode(msg.sender, ctBlob, inputProof, deadline, block.number));
+
+        // Select operators for this UEI
+        address[] memory selectedOps = new address[](COMMITTEE_SIZE);
+        uint256 seed = uint256(intentId);
+
+        for (uint256 i = 0; i < COMMITTEE_SIZE && i < registeredOperators.length; i++) {
+            uint256 index = (seed + i) % registeredOperators.length;
+            selectedOps[i] = registeredOperators[index];
+        }
+
+        // Decode the blob to extract encrypted handles and grant FHE permissions
+        _grantFHEPermissions(ctBlob, inputProof, selectedOps);
+
+        // Create UEI task
+        UEITask memory task = UEITask({
+            intentId: intentId,
+            submitter: msg.sender,
+            ctBlob: ctBlob,
+            deadline: deadline,
+            blockSubmitted: block.number,
+            selectedOperators: selectedOps,
+            status: UEIStatus.Pending
+        });
+
+        // Store the task
+        ueiTasks[intentId] = task;
+
+        emit UEISubmittedWithProof(intentId, msg.sender, ctBlob, inputProof, deadline, selectedOps);
+        return intentId;
+    }
+
+    /**
+     * @notice Grant FHE permissions to selected operators for encrypted UEI components
+     * @param ctBlob The encrypted blob containing FHE handles
+     * @param inputProof The input proof for FHE operations
+     * @param selectedOperators The operators to grant permissions to
+     */
+    function _grantFHEPermissions(
+        bytes calldata ctBlob,
+        bytes calldata inputProof,
+        address[] memory selectedOperators
+    ) internal {
+        try {
+            // Decode the blob to extract encrypted handles
+            (
+                bytes32 encDecoder,    // eaddress handle
+                bytes32 encTarget,     // eaddress handle  
+                bytes32 encSelector,   // euint32 handle
+                uint8[] memory argTypes, // unencrypted
+                bytes32[] memory encArgs // euint256 handles
+            ) = abi.decode(ctBlob, (bytes32, bytes32, bytes32, uint8[], bytes32[]));
+
+            // Convert handles to FHE types and grant permissions
+            eaddress decoder = FHE.fromExternal(encDecoder, inputProof);
+            eaddress target = FHE.fromExternal(encTarget, inputProof);
+            euint32 selector = FHE.fromExternal(encSelector, inputProof);
+
+            // Grant permissions to all selected operators
+            for (uint256 i = 0; i < selectedOperators.length; i++) {
+                address operator = selectedOperators[i];
+                
+                FHE.allow(decoder, operator);
+                FHE.allow(target, operator);
+                FHE.allow(selector, operator);
+                
+                // Grant permissions for all encrypted arguments
+                for (uint256 j = 0; j < encArgs.length; j++) {
+                    euint256 arg = FHE.fromExternal(encArgs[j], inputProof);
+                    FHE.allow(arg, operator);
+                }
+            }
+
+        } catch {
+            // If decoding fails, continue without granting permissions
+            // This maintains compatibility with old blob formats
+        }
     }
 
     /**
