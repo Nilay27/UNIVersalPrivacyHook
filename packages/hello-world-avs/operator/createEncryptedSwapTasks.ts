@@ -44,43 +44,6 @@ interface SwapIntent {
     description: string;
 }
 
-// Test swap intents - designed to create matches on Sepolia
-const testIntents: SwapIntent[] = [
-    // These two should match (USDC <-> USDT)
-    {
-        tokenIn: USDC_ADDRESS,
-        tokenOut: USDT_ADDRESS,
-        amount: BigInt(5 * 1e6), // 5 USDC (6 decimals)
-        description: "User A: Swap 5 USDC to USDT"
-    },
-    {
-        tokenIn: USDT_ADDRESS,
-        tokenOut: USDC_ADDRESS,
-        amount: BigInt(10 * 1e6), // 10 USDT (6 decimals)
-        description: "User B: Swap 10 USDT to USDC (should match with User A)"
-    },
-    // Another pair for partial matching
-    {
-        tokenIn: USDC_ADDRESS,
-        tokenOut: USDT_ADDRESS,
-        amount: BigInt(5 * 1e6), // 5 USDC (6 decimals)
-        description: "User C: Swap 5 USDC to USDT"
-    },
-    {
-        tokenIn: USDT_ADDRESS,
-        tokenOut: USDC_ADDRESS,
-        amount: BigInt(10 * 1e6), // 10 USDT (6 decimals)
-        description: "User D: Swap 10 USDT to USDC (partial match with users A and C)"
-    },
-    // One more for net swap
-    {
-        tokenIn: USDC_ADDRESS,
-        tokenOut: USDT_ADDRESS,
-        amount: BigInt(2 * 1e6), // 2 USDC (6 decimals)
-        description: "User E: Swap 2 USDC to USDT (might require net swap)"
-    }
-];
-
 // Initialize FHEVM instance globally
 let fhevmInstance: any = null;
 
@@ -222,7 +185,7 @@ async function submitEncryptedIntent(
 
         // Add timeout for transaction confirmation
         const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Transaction timeout after 60 seconds")), 60000)
+            setTimeout(() => reject(new Error("Transaction timeout after 2 minutes")), 120000)
         );
 
         const receipt = await Promise.race([
@@ -257,10 +220,79 @@ async function submitEncryptedIntent(
     }
 }
 
+// Track last processed block to avoid duplicate submissions
+let lastProcessedBlock = 0;
+let isProcessingIntent = false;
+
+async function submitHelperCounterIntent(
+    universalHook: ethers.Contract,
+    poolKey: any,
+    userTokenIn: string,
+    userTokenOut: string
+): Promise<void> {
+    if (isProcessingIntent) {
+        console.log("Already processing an intent, skipping...");
+        return;
+    }
+
+    isProcessingIntent = true;
+
+    try {
+        // Submit 1 token in opposite direction
+        const helperIntent: SwapIntent = {
+            tokenIn: userTokenOut,  // Opposite direction
+            tokenOut: userTokenIn,  // Opposite direction
+            amount: BigInt(1 * 1e6), // Fixed 1 token (6 decimals)
+            description: "Helper counter-intent (1 token)"
+        };
+
+        console.log("\n🤖 Auto-submitting helper counter-intent (1 token in opposite direction)...");
+        const intentId = await submitEncryptedIntent(universalHook, poolKey, helperIntent);
+
+        if (intentId) {
+            console.log(`✅ Helper counter-intent submitted: ${intentId}`);
+
+            // Wait ~48 seconds (4 blocks) then submit finalization trigger
+            console.log("⏰ Scheduling finalization trigger in 48 seconds...");
+            setTimeout(async () => {
+                await submitFinalizationTrigger(universalHook, poolKey);
+            }, 48000);
+        }
+    } catch (error) {
+        console.error("❌ Error submitting helper intent:", error);
+    } finally {
+        isProcessingIntent = false;
+    }
+}
+
+async function submitFinalizationTrigger(
+    universalHook: ethers.Contract,
+    poolKey: any
+): Promise<void> {
+    try {
+        console.log("\n🎯 Submitting finalization trigger (tiny intent to force batch processing)...");
+
+        const tinyIntent: SwapIntent = {
+            tokenIn: USDC_ADDRESS,
+            tokenOut: USDT_ADDRESS,
+            amount: BigInt(1), // Just 1 unit to trigger
+            description: "Finalization trigger"
+        };
+
+        const intentId = await submitEncryptedIntent(universalHook, poolKey, tinyIntent);
+        if (intentId) {
+            console.log(`✅ Finalization trigger submitted: ${intentId}`);
+            console.log("📦 Batch should finalize and settle within 1-2 minutes!");
+        }
+    } catch (error) {
+        console.error("❌ Error submitting finalization trigger:", error);
+    }
+}
+
 async function main() {
-    console.log("Starting Encrypted Swap Task Generator");
-    console.log("=====================================\n");
-    
+    console.log("🚀 Starting Helper Intent Auto-Submission Service");
+    console.log("===================================================\n");
+
     // Initialize ZAMA FHEVM for real FHE encryption
     console.log("Initializing ZAMA FHEVM...");
 
@@ -268,9 +300,9 @@ async function main() {
     await initializeFhevm(wallet);
     await initializeFhevmInstance();
 
-    console.log("ZAMA FHEVM initialized successfully");
-    console.log("Real FHE encryption enabled\n");
-    
+    console.log("✅ ZAMA FHEVM initialized successfully");
+    console.log("✅ Real FHE encryption enabled\n");
+
     // Initialize UniversalPrivacyHook contract
     const universalHook = new ethers.Contract(UNIVERSAL_PRIVACY_HOOK, UniversalHookABI, wallet);
 
@@ -289,46 +321,99 @@ async function main() {
     };
 
     console.log("Pool Key:", poolKey);
+    console.log("Helper Wallet:", wallet.address);
+    console.log("\n📡 Monitoring for IntentSubmitted events...");
+    console.log("🤖 Will auto-submit 1 token counter-intent for each user swap");
+    console.log("⏰ Will auto-trigger batch finalization 60s after counter-intent\n");
 
-    // SwapManager is now deployed on Sepolia
-    console.log("✅ SwapManager deployed and ready for AVS batching");
-    
-    // Submit intents to create a batch
-    console.log("\nSubmitting encrypted intents to batch...");
-    const submittedIntentIds: string[] = [];
-    
-    for (let i = 0; i < testIntents.length; i++) {
-        const intentId = await submitEncryptedIntent(universalHook, poolKey, testIntents[i]);
-        if (intentId) {
-            submittedIntentIds.push(intentId);
-        }
-        
-        // Small delay between intents
-        if (i < testIntents.length - 1) {
-            console.log("\nWaiting 2 seconds before next intent...");
-            await new Promise(resolve => setTimeout(resolve, 2000));
+    // Get current block to start monitoring from
+    lastProcessedBlock = await provider.getBlockNumber();
+    console.log(`Starting from block: ${lastProcessedBlock}\n`);
+
+    // Poll for new intents every 12 seconds (1 block time on Sepolia)
+    const pollInterval = 12000; // 12 seconds
+
+    async function pollForNewIntents() {
+        try {
+            const currentBlock = await provider.getBlockNumber();
+
+            // Ensure we don't query backwards
+            if (currentBlock <= lastProcessedBlock) {
+                return;
+            }
+
+            console.log(`📡 Polling blocks ${lastProcessedBlock + 1} to ${currentBlock}...`);
+
+            // Query for IntentSubmitted events in the new blocks
+            const filter = universalHook.filters.IntentSubmitted();
+            const events = await universalHook.queryFilter(filter, lastProcessedBlock + 1, currentBlock);
+
+            console.log(`   Found ${events.length} IntentSubmitted events`);
+
+            for (const log of events) {
+                // Cast to EventLog to access args
+                const event = log as ethers.EventLog;
+                if (!event.args) continue;
+
+                const { tokenIn, tokenOut, user, intentId } = event.args;
+                const blockNumber = event.blockNumber;
+
+                // Skip if it's our helper wallet
+                if (user.toLowerCase() === wallet.address.toLowerCase()) {
+                    continue;
+                }
+
+                console.log(`\n🔔 New intent detected from user: ${user.substring(0, 8)}...`);
+                console.log(`   Token In: ${tokenIn === USDC_ADDRESS ? 'USDC' : 'USDT'}`);
+                console.log(`   Token Out: ${tokenOut === USDC_ADDRESS ? 'USDC' : 'USDT'}`);
+                console.log(`   Intent ID: ${intentId}`);
+                console.log(`   Block: ${blockNumber}`);
+
+                // Submit helper counter-intent
+                await submitHelperCounterIntent(universalHook, poolKey, tokenIn, tokenOut);
+            }
+
+            // Check for batch events too
+            const batchFinalizedFilter = universalHook.filters.BatchFinalized();
+            const batchFinalizedEvents = await universalHook.queryFilter(batchFinalizedFilter, lastProcessedBlock + 1, currentBlock);
+
+            for (const log of batchFinalizedEvents) {
+                const event = log as ethers.EventLog;
+                if (!event.args) continue;
+                const { batchId, intentCount } = event.args;
+                console.log(`\n📦 Batch ${batchId} finalized with ${intentCount} intents!`);
+                console.log("   Waiting for AVS operator to decrypt and settle...");
+            }
+
+            const batchSettledFilter = universalHook.filters.BatchSettled();
+            const batchSettledEvents = await universalHook.queryFilter(batchSettledFilter, lastProcessedBlock + 1, currentBlock);
+
+            for (const log of batchSettledEvents) {
+                const event = log as ethers.EventLog;
+                if (!event.args) continue;
+                const { batchId, internalizedCount, netSwapCount } = event.args;
+                console.log(`\n✅ Batch ${batchId} settled!`);
+                console.log(`   Internalized transfers: ${internalizedCount}`);
+                console.log(`   Net swaps: ${netSwapCount}`);
+            }
+
+            lastProcessedBlock = currentBlock;
+        } catch (error: any) {
+            console.error("Error polling for events:", error.message || error);
+            // If we get a block range error, reset to current block
+            if (error.message?.includes('block range') || error.message?.includes('end') || error.message?.includes('begin')) {
+                const currentBlock = await provider.getBlockNumber();
+                lastProcessedBlock = currentBlock;
+                console.log(`Reset to current block: ${currentBlock}`);
+            }
         }
     }
-    
-    console.log(`\n=== All ${submittedIntentIds.length} intents submitted ===`);
-    
-    // Monitor for batch events from the hook
-    console.log("\nBatches will auto-finalize after 5 blocks when new intents arrive.");
-    console.log("Monitoring for batch events from UniversalPrivacyHook...");
 
-    universalHook.on("BatchFinalized", (batchId: string, intentCount: number) => {
-        console.log(`\n📦 Batch ${batchId} finalized with ${intentCount} intents!`);
-        console.log("   Waiting for AVS operators to process and settle...");
-    });
+    // Start polling
+    setInterval(pollForNewIntents, pollInterval);
 
-    universalHook.on("BatchSettled", (batchId: string, internalizedCount: number, netSwapCount: number) => {
-        console.log(`\n✅ Batch ${batchId} settled!`);
-        console.log(`   Internalized transfers: ${internalizedCount}`);
-        console.log(`   Net swaps: ${netSwapCount}`);
-    });
-    
-    // Keep the script running to monitor events
-    console.log("\nPress Ctrl+C to exit...");
+    // Keep the script running
+    console.log("✅ Service running with 12s polling... Press Ctrl+C to exit\n");
 }
 
 // Execute main function

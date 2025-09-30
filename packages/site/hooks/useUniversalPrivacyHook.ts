@@ -270,12 +270,12 @@ export const useUniversalPrivacyHook = () => {
       }
       if (!targetAddress) return [];
       
-      // Use Ankr public RPC for reliable data fetching
-      const ankrProvider = new ethers.JsonRpcProvider('https://1rpc.io/sepolia');
-      const hook = new ethers.Contract(CONTRACTS.UniversalPrivacyHook, UniversalPrivacyHookABI.abi, ankrProvider);
-      
+      // Use Cloudflare's public Sepolia RPC (no API key, no rate limits for reasonable usage)
+      const publicProvider = new ethers.JsonRpcProvider('https://ethereum-sepolia-rpc.publicnode.com');
+      const hook = new ethers.Contract(CONTRACTS.UniversalPrivacyHook, UniversalPrivacyHookABI.abi, publicProvider);
+
       // Calculate block range for last 1 hour (approximately 300 blocks on Sepolia)
-      const currentBlock = await ankrProvider.getBlockNumber();
+      const currentBlock = await publicProvider.getBlockNumber();
       const oneHourAgo = currentBlock - 300; // ~12 seconds per block
       
       console.log(`Fetching intents from block ${oneHourAgo} to ${currentBlock} for ${targetAddress}`);
@@ -334,7 +334,7 @@ export const useUniversalPrivacyHook = () => {
           executed: false, // We already filtered out executed ones
           blockNumber: event.blockNumber,
           transactionHash: event.transactionHash,
-          timestamp: (await ankrProvider.getBlock(event.blockNumber))?.timestamp || 0
+          timestamp: (await publicProvider.getBlock(event.blockNumber))?.timestamp || 0
         };
       }));
       
