@@ -54,6 +54,11 @@ async function main() {
     
     // We need EXACTLY 0x0080 (only beforeSwap, nothing else)
     if (addressBits === BigInt(BEFORE_SWAP_FLAG)) {
+      // if(salt == 4773n){
+      //   console.log("Valid salt found but contract exists on this so skipping")
+      //   attempts++;
+      //   continue;
+      // }
       hookAddress = create2Address;
       console.log(`\n   ✅ Found valid address after ${attempts} attempts!`);
       console.log(`   Hook address: ${hookAddress}`);

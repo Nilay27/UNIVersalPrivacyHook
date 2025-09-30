@@ -14,8 +14,8 @@ const wallet = new ethers.Wallet(process.env.PRIVATE_KEY!, provider);
 const chainId = 11155111;
 
 // Sepolia deployment addresses
-const UNIVERSAL_PRIVACY_HOOK = "0xf5DB4551075284285245549aa2f108fFbC9E0080";
-const SWAP_MANAGER_ADDRESS = process.env.SWAP_MANAGER_ADDRESS || "0x0000000000000000000000000000000000000000"; // TODO: Deploy SwapManager on Sepolia
+const UNIVERSAL_PRIVACY_HOOK = "0x32841c9E0245C4B1a9cc29137d7E1F078e6f0080";
+const SWAP_MANAGER_ADDRESS = "0xFbce8804FfC5413d60093702664ABfd71Ce0E592";
 
 console.log("Using UniversalPrivacyHook at:", UNIVERSAL_PRIVACY_HOOK);
 console.log("Using SwapManager at:", SWAP_MANAGER_ADDRESS);
@@ -50,34 +50,34 @@ const testIntents: SwapIntent[] = [
     {
         tokenIn: USDC_ADDRESS,
         tokenOut: USDT_ADDRESS,
-        amount: BigInt(100 * 1e18), // 100 USDC (18 decimals on test tokens)
-        description: "User A: Swap 100 USDC to USDT"
+        amount: BigInt(5 * 1e6), // 5 USDC (6 decimals)
+        description: "User A: Swap 5 USDC to USDT"
     },
     {
         tokenIn: USDT_ADDRESS,
         tokenOut: USDC_ADDRESS,
-        amount: BigInt(80 * 1e18), // 80 USDT (18 decimals on test tokens)
-        description: "User B: Swap 80 USDT to USDC (should match with User A)"
+        amount: BigInt(10 * 1e6), // 10 USDT (6 decimals)
+        description: "User B: Swap 10 USDT to USDC (should match with User A)"
     },
     // Another pair for partial matching
     {
         tokenIn: USDC_ADDRESS,
         tokenOut: USDT_ADDRESS,
-        amount: BigInt(50 * 1e18), // 50 USDC
-        description: "User C: Swap 50 USDC to USDT"
+        amount: BigInt(5 * 1e6), // 5 USDC (6 decimals)
+        description: "User C: Swap 5 USDC to USDT"
     },
     {
         tokenIn: USDT_ADDRESS,
         tokenOut: USDC_ADDRESS,
-        amount: BigInt(120 * 1e18), // 120 USDT (partial match)
-        description: "User D: Swap 120 USDT to USDC (partial match with users A and C)"
+        amount: BigInt(10 * 1e6), // 10 USDT (6 decimals)
+        description: "User D: Swap 10 USDT to USDC (partial match with users A and C)"
     },
     // One more for net swap
     {
         tokenIn: USDC_ADDRESS,
         tokenOut: USDT_ADDRESS,
-        amount: BigInt(25 * 1e18), // 25 USDC
-        description: "User E: Swap 25 USDC to USDT (might require net swap)"
+        amount: BigInt(2 * 1e6), // 2 USDC (6 decimals)
+        description: "User E: Swap 2 USDC to USDT (might require net swap)"
     }
 ];
 
@@ -149,9 +149,60 @@ async function submitEncryptedIntent(
 
         // Get current nonce and gas price to avoid estimation issues
         const nonce = await wallet.getNonce();
+        console.log(`Using nonce: ${nonce}`);
+
         const feeData = await provider.getFeeData();
+        const gasPrice = (feeData.gasPrice! * 120n) / 100n;
+        console.log(`Gas price: ${gasPrice.toString()}`);
+
+        console.log("Submitting transaction to UniversalPrivacyHook...");
+        console.log("Contract address:", universalHook.target);
+        console.log("Wallet address:", wallet.address);
+
+        // Try to estimate gas first
+        try {
+            console.log("Estimating gas...");
+            console.log("Parameters being sent:");
+            console.log("  poolKey:", JSON.stringify(poolKey, null, 2));
+            console.log("  tokenIn:", intent.tokenIn);
+            console.log("  tokenOut:", intent.tokenOut);
+            console.log("  encryptedHandle:", encrypted.handle);
+            console.log("  inputProof length:", encrypted.inputProof.length);
+            console.log("  deadline:", deadline);
+
+            // Try to decode the revert reason if gas estimation fails
+            const estimatedGas = await universalHook.submitIntent.estimateGas(
+                poolKey,
+                intent.tokenIn,
+                intent.tokenOut,
+                encrypted.handle,
+                encrypted.inputProof,
+                deadline
+            );
+            console.log(`Estimated gas: ${estimatedGas.toString()}`);
+        } catch (estimateError: any) {
+            console.error("Gas estimation failed:", estimateError.message);
+
+            // Try to get more details about the error
+            if (estimateError.data) {
+                try {
+                    const decodedError = universalHook.interface.parseError(estimateError.data);
+                    console.error("Decoded error:", decodedError);
+                } catch {
+                    console.error("Raw error data:", estimateError.data);
+                }
+            }
+
+            if (estimateError.reason) {
+                console.error("Revert reason:", estimateError.reason);
+            }
+
+            console.error("Full error object:", JSON.stringify(estimateError, null, 2));
+            // Continue anyway with manual gas limit
+        }
 
         // Submit the encrypted intent to UniversalPrivacyHook with handle and proof
+        console.log("Attempting to send transaction...");
         const tx = await universalHook.submitIntent(
             poolKey,
             intent.tokenIn,
@@ -162,13 +213,23 @@ async function submitEncryptedIntent(
             {
                 nonce: nonce,
                 gasLimit: 5000000,
-                gasPrice: feeData.gasPrice
+                gasPrice: gasPrice
             }
         );
-        
+
         console.log(`Transaction submitted: ${tx.hash}`);
-        const receipt = await tx.wait();
-        
+        console.log("Waiting for confirmation (this may take 15-30 seconds)...");
+
+        // Add timeout for transaction confirmation
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Transaction timeout after 60 seconds")), 60000)
+        );
+
+        const receipt = await Promise.race([
+            tx.wait(1), // Wait for 1 confirmation
+            timeoutPromise
+        ]) as any;
+        console.log("transaction receipt with hash:", receipt.hash);
         // Parse events from the receipt
         const intentSubmittedEvent = receipt.logs.find((log: any) => {
             try {
@@ -229,11 +290,8 @@ async function main() {
 
     console.log("Pool Key:", poolKey);
 
-    // Note: SwapManager needs to be deployed on Sepolia for AVS to work
-    if (SWAP_MANAGER_ADDRESS === "0x0000000000000000000000000000000000000000") {
-        console.warn("⚠️  SwapManager not deployed on Sepolia yet.");
-        console.warn("   Intents will be submitted but AVS batching won't work until SwapManager is deployed.");
-    }
+    // SwapManager is now deployed on Sepolia
+    console.log("✅ SwapManager deployed and ready for AVS batching");
     
     // Submit intents to create a batch
     console.log("\nSubmitting encrypted intents to batch...");

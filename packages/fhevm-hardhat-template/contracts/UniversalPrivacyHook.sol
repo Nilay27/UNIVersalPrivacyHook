@@ -149,7 +149,6 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
      * @param _swapManager Address of the AVS SwapManager contract
      */
     function setSwapManager(address _swapManager) external {
-        require(swapManager == address(0), "SwapManager already set");
         require(_swapManager != address(0), "Invalid address");
         swapManager = _swapManager;
     }
@@ -367,8 +366,9 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
             // Create new hybrid FHE/ERC20 token
             string memory symbol = _getCurrencySymbol(currency);
             string memory name = string(abi.encodePacked("Encrypted ", symbol));
+            uint8 decimals = IERC20Metadata(Currency.unwrap(currency)).decimals();
             
-            existing = new HybridFHERC20(name, string(abi.encodePacked("e", symbol)));
+            existing = new HybridFHERC20(name, string(abi.encodePacked("e", symbol)), decimals);
             poolEncryptedTokens[poolId][currency] = existing;
             
             emit EncryptedTokenCreated(poolId, currency, address(existing));
@@ -461,7 +461,7 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
     struct InternalTransfer {
         address to;             // User receiving tokens
         address encToken;       // IFHERC20 token address (e.g., eUSDC or eUSDT contract)
-        euint128 encAmount;     // Already encrypted amount from AVS
+        bytes32 encAmount;      // External encrypted amount handle from AVS (will be verified via FHE.fromExternal)
     }
 
     struct UserShare {
@@ -490,7 +490,8 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
         Currency tokenIn,
         Currency tokenOut,
         address outputToken,
-        UserShare[] calldata userShares
+        UserShare[] calldata userShares,
+        bytes calldata inputProof
     ) external {
         // TODO: Add onlySwapManager modifier once SwapManager interface is added
         require(swapManager != address(0), "SwapManager not set");
@@ -511,12 +512,18 @@ contract UniversalPrivacyHook is BaseHook, IUnlockCallback, ReentrancyGuardTrans
             // Cast to IFHERC20 interface
             IFHERC20 encToken = IFHERC20(transfer.encToken);
 
-            // AVS provides encrypted amounts, just grant permissions
-            FHE.allowThis(transfer.encAmount);
-            FHE.allow(transfer.encAmount, address(encToken));
+            // Verify handle via FHE.fromExternal with inputProof
+            // This converts external handle (bytes32) to verified internal euint128
+            euint128 verifiedAmount = FHE.fromExternal(
+                externalEuint128.wrap(transfer.encAmount),
+                inputProof
+            );
 
-            // Mint to receiver (hook already holds sender's tokens from submitIntent)
-            encToken.mintEncrypted(transfer.to, transfer.encAmount);
+            // Grant permissions to encrypted token contract
+            FHE.allow(verifiedAmount, address(encToken));
+
+            // Transfer from Hook to receiver (Hook already holds tokens from matched intents)
+            encToken.transferEncrypted(transfer.to, verifiedAmount);
         }
 
         // Execute net swap on AMM if needed

@@ -5,7 +5,9 @@ libs = ["lib"]
 fs_permissions = [{ access = "read-write", path = "./" }]
 solc = "0.8.27"
 optimizer = true
+optimizer_runs = 50
 via_ir = true
+allow_paths = ["../../fhevm-hardhat-template/node_modules", "../../../node_modules"]
 
 remappings = [
     "@eigenlayer/=lib/eigenlayer-middleware/lib/eigenlayer-contracts/src/",
@@ -14,6 +16,9 @@ remappings = [
     "@openzeppelin/=lib/eigenlayer-middleware/lib/openzeppelin-contracts/",
     "@openzeppelin-upgrades/=lib/eigenlayer-middleware/lib/openzeppelin-contracts-upgradeable/",
     "@fhenixprotocol/=lib/fhenix-contracts/",
+    "@fhevm/=../../fhevm-hardhat-template/node_modules/@fhevm/",
+    "encrypted-types/=../../../node_modules/encrypted-types/",
+    "@zama-fhe/oracle-solidity/=../../../node_modules/@zama-fhe/oracle-solidity/",
     "forge-std/=lib/forge-std/src/",
 ]
 

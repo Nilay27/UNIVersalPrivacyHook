@@ -261,7 +261,7 @@ contract SwapManagerTaskManagerSetup is Test {
 
     function createTask(
         string memory taskName
-    ) internal returns (ISwapManager.Task memory task, uint32 taskIndex) {
+    ) internal returns (ISwapManager.UEITask memory task, uint32 taskIndex) {
         ISwapManager SwapManager =
             ISwapManager(swapManagerDeployment.SwapManager);
 
@@ -273,7 +273,7 @@ contract SwapManagerTaskManagerSetup is Test {
 
     function respondToTask(
         Operator[] memory operatorsMem,
-        ISwapManager.Task memory task,
+        ISwapManager.UEITask memory task,
         uint32 referenceTaskIndex
     ) internal {
         bytes memory signedResponse = makeTaskResponse(operatorsMem, task);
@@ -285,7 +285,7 @@ contract SwapManagerTaskManagerSetup is Test {
 
     function makeTaskResponse(
         Operator[] memory operatorsMem,
-        ISwapManager.Task memory task
+        ISwapManager.UEITask memory task
     ) internal pure returns (bytes memory) {
         bytes32 messageHash = keccak256(abi.encodePacked("Hello, ", task.name));
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
@@ -305,7 +305,7 @@ contract SwapManagerTaskManagerSetup is Test {
     }
 
     function slashOperator(
-        ISwapManager.Task memory task,
+        ISwapManager.UEITask memory task,
         uint32 referenceTaskIndex,
         address operator
     ) internal {
@@ -416,7 +416,7 @@ contract CreateTask is SwapManagerTaskManagerSetup {
         string memory taskName = "Test Task";
 
         vm.prank(generator.key.addr);
-        ISwapManager.Task memory newTask = sm.createNewTask(taskName);
+        ISwapManager.UEITask memory newTask = sm.createNewTask(taskName);
 
         require(
             sha256(abi.encodePacked(newTask.name)) == sha256(abi.encodePacked(taskName)),
@@ -464,7 +464,7 @@ contract RespondToTask is SwapManagerTaskManagerSetup {
     }
 
     function testRespondToTask() public {
-        (ISwapManager.Task memory newTask, uint32 taskIndex) = createTask("TestTask");
+        (ISwapManager.UEITask memory newTask, uint32 taskIndex) = createTask("TestTask");
 
         Operator[] memory operatorsMem = getOperators(1);
         bytes memory signedResponse = makeTaskResponse(operatorsMem, newTask);
@@ -474,7 +474,7 @@ contract RespondToTask is SwapManagerTaskManagerSetup {
     }
 
     function testRespondToTaskWith2OperatorsAggregatedSignature() public {
-        (ISwapManager.Task memory newTask, uint32 taskIndex) =
+        (ISwapManager.UEITask memory newTask, uint32 taskIndex) =
             createTask("TestTask2Aggregated");
 
         // Generate aggregated response with two operators
@@ -486,7 +486,7 @@ contract RespondToTask is SwapManagerTaskManagerSetup {
     }
 
     function testRespondToTaskWith3OperatorsAggregatedSignature() public {
-        (ISwapManager.Task memory newTask, uint32 taskIndex) =
+        (ISwapManager.UEITask memory newTask, uint32 taskIndex) =
             createTask("TestTask3Aggregated");
 
         // Generate aggregated response with three operators
@@ -534,7 +534,7 @@ contract SlashOperator is SwapManagerTaskManagerSetup {
     }
 
     function testValidResponseIsNotSlashable() public {
-        (ISwapManager.Task memory newTask, uint32 taskIndex) =
+        (ISwapManager.UEITask memory newTask, uint32 taskIndex) =
             createTask("TestValidResponseIsNotSlashable");
 
         Operator[] memory operatorsMem = getOperators(1);
@@ -549,7 +549,7 @@ contract SlashOperator is SwapManagerTaskManagerSetup {
     }
 
     function testNoResponseIsSlashable() public {
-        (ISwapManager.Task memory newTask, uint32 taskIndex) =
+        (ISwapManager.UEITask memory newTask, uint32 taskIndex) =
             createTask("TestNoResponseIsSlashable");
 
         Operator[] memory operatorsMem = getOperators(1);
@@ -564,7 +564,7 @@ contract SlashOperator is SwapManagerTaskManagerSetup {
     }
 
     function testMultipleSlashings() public {
-        (ISwapManager.Task memory newTask, uint32 taskIndex) =
+        (ISwapManager.UEITask memory newTask, uint32 taskIndex) =
             createTask("TestMultipleSlashings");
 
         Operator[] memory operatorsMem = getOperators(3);

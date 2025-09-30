@@ -23,7 +23,7 @@ const MAX_SQRT_PRICE_MINUS_ONE = 14614467034852101032872730522039888223787239703
 // Liquidity parameters
 const TICK_LOWER = -60; // Narrow range for concentrated liquidity
 const TICK_UPPER = 60;
-const LIQUIDITY_AMOUNT = ethers.parseUnits("100000", 6); // 10k tokens
+const LIQUIDITY_AMOUNT = ethers.parseUnits("10000", 6); // 10k tokens
 
 // ---- Liquidity math helpers (Uniswap v3/v4 style) ----
 const Q96 = 2n ** 96n;
@@ -111,7 +111,7 @@ async function main() {
   console.log("✅ Correct deployer address\n");
 
   // Use our deployed and verified contracts
-  const hookAddress = "0xf5DB4551075284285245549aa2f108fFbC9E0080";
+  const hookAddress = "0x32841c9E0245C4B1a9cc29137d7E1F078e6f0080";
   const usdcAddress = "0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1";
   const usdtAddress = "0xB1D9519e953B8513a4754f9B33d37eDba90c001D";
 

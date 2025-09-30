@@ -14,6 +14,8 @@ import {SepoliaConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
  */
 contract HybridFHERC20 is ERC20, IFHERC20, SepoliaConfig {
 
+    uint8 private _decimals;
+
     //errors
     error HybridFHERC20__InvalidSender();
     error HybridFHERC20__InvalidReceiver();
@@ -26,8 +28,9 @@ contract HybridFHERC20 is ERC20, IFHERC20, SepoliaConfig {
     //zero constant
     euint128 private immutable ZERO = FHE.asEuint128(0);
 
-    constructor(string memory name, string memory symbol) ERC20(name, symbol) {
+    constructor(string memory name, string memory symbol, uint8 decimals) ERC20(name, symbol) {
         FHE.allowThis(ZERO);
+        _decimals = decimals;
     }
 
     // ----------- Public Mint Functions --------------------

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start:operator": "ts-node operator/index.ts",
+    "start:operator": "cat contracts/out/SwapManager.sol/SwapManager.json | jq -r '.abi' > abis/SwapManager.json && ts-node operator/index.ts",
     "start:traffic": "ts-node operator/createEncryptedSwapTasks.ts",
     "start:universal": "ts-node operator/createUniversalSwapTasks.ts",
     "start:universal-js": "node operator/createUniversalSwapTasks.js",

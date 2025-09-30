@@ -13,6 +13,7 @@ import {TransparentUpgradeableProxy} from
 import {StrategyFactory} from "@eigenlayer/contracts/strategies/StrategyFactory.sol";
 import {StrategyManager} from "@eigenlayer/contracts/core/StrategyManager.sol";
 import {IRewardsCoordinator} from "@eigenlayer/contracts/interfaces/IRewardsCoordinator.sol";
+import {SwapManager} from "../src/SwapManager.sol";
 
 import {
     IECDSAStakeRegistryTypes,
@@ -20,6 +21,10 @@ import {
 } from "@eigenlayer-middleware/src/interfaces/IECDSAStakeRegistry.sol";
 
 import "forge-std/Test.sol";
+
+interface IUniversalPrivacyHook {
+    function setSwapManager(address _swapManager) external;
+}
 
 contract SwapManagerDeployer is Script, Test {
     using CoreDeployLib for *;
@@ -35,6 +40,9 @@ contract SwapManagerDeployer is Script, Test {
     SwapManagerDeploymentLib.DeploymentConfigData swapManagerConfig;
     IECDSAStakeRegistryTypes.Quorum internal quorum;
     ERC20Mock token;
+
+    // UniversalPrivacyHook address on Sepolia
+    address constant UNIVERSAL_PRIVACY_HOOK = 0x32841c9E0245C4B1a9cc29137d7E1F078e6f0080;
 
     function setUp() public virtual {
         deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
@@ -78,6 +86,24 @@ contract SwapManagerDeployer is Script, Test {
 
         swapManagerDeployment.strategy = address(swapManagerStrategy);
         swapManagerDeployment.token = address(token);
+
+        // Set the SwapManager address in UniversalPrivacyHook
+        console2.log("Setting SwapManager in UniversalPrivacyHook...");
+        IUniversalPrivacyHook(UNIVERSAL_PRIVACY_HOOK).setSwapManager(swapManagerDeployment.SwapManager);
+        console2.log("SwapManager set successfully!");
+
+        // Check who the admin is
+        console2.log("Checking admin of SwapManager...");
+        address currentAdmin = SwapManager(swapManagerDeployment.SwapManager).admin();
+        console2.log("Current admin:", currentAdmin);
+        console2.log("Deployer address:", deployer);
+        console2.log("RewardsOwner address:", rewardsOwner);
+        console2.log("msg.sender:", msg.sender);
+
+        // Also authorize the hook in SwapManager
+        console2.log("Authorizing UniversalPrivacyHook in SwapManager...");
+        SwapManager(swapManagerDeployment.SwapManager).authorizeHook(UNIVERSAL_PRIVACY_HOOK);
+        console2.log("Hook authorized successfully!");
 
         vm.stopBroadcast();
         verifyDeployment();

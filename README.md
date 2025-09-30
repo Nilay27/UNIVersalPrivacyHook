@@ -237,7 +237,7 @@ function _transferEncrypted(address from, address to, euint128 amount) internal 
 
 | Contract | Address | Explorer |
 |----------|---------|----------|
-| UniversalPrivacyHook | `0xf5DB4551075284285245549aa2f108fFbC9E0080` | [View](https://sepolia.etherscan.io/address/0xf5DB4551075284285245549aa2f108fFbC9E0080) |
+| UniversalPrivacyHook | `0x32841c9E0245C4B1a9cc29137d7E1F078e6f0080` | [View](https://sepolia.etherscan.io/address/0x32841c9E0245C4B1a9cc29137d7E1F078e6f0080) |
 | PoolManager | `0xE03A1074c86CFeDd5C142C4F04F1a1536e203543` | [View](https://sepolia.etherscan.io/address/0xE03A1074c86CFeDd5C142C4F04F1a1536e203543) |
 | MockUSDC | `0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1` | [View](https://sepolia.etherscan.io/address/0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1) |
 | MockUSDT | `0xB1D9519e953B8513a4754f9B33d37eDba90c001D` | [View](https://sepolia.etherscan.io/address/0xB1D9519e953B8513a4754f9B33d37eDba90c001D) |

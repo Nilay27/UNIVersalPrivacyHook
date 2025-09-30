@@ -9,7 +9,7 @@ interface ISwapManager {
     struct Batch {
         bytes32 batchId;
         bytes32[] intentIds;
-        address poolId;
+        bytes32 poolId;  // Changed from address to bytes32 to match PoolId type
         address hook;
         uint32 createdBlock;
         uint32 finalizedBlock;
@@ -24,9 +24,7 @@ interface ISwapManager {
     }
 
     // Batch events
-    event BatchFinalized(bytes32 indexed batchId, bytes batchData);
     event BatchSettlementSubmitted(bytes32 indexed batchId, uint256 internalizedCount, uint256 netSwapCount);
-    event BatchSettled(bytes32 indexed batchId, bool success);
     event OperatorSelectedForBatch(bytes32 indexed batchId, address indexed operator);
 
     // Batch functions
@@ -45,7 +43,6 @@ interface ISwapManager {
     // Batch events
     event BatchFinalized(bytes32 indexed batchId, bytes batchData);
     event BatchSettled(bytes32 indexed batchId, bool success);
-    event OperatorSelectedForBatch(bytes32 indexed batchId, address indexed operator);
 
     // ============ UEI (Universal Encrypted Intent) SYSTEM ============
 

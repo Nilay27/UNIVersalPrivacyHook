@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import "./ISwapManager.sol";
-import "./SimpleBoringVault.sol";
+import {ISwapManager} from "./ISwapManager.sol";
+import {SimpleBoringVault} from "./SimpleBoringVault.sol";
 
 /**
  * @title MockPrivacyHook
@@ -12,6 +12,21 @@ import "./SimpleBoringVault.sol";
 contract MockPrivacyHook {
     ISwapManager public swapManager;
     SimpleBoringVault public boringVault;
+
+    // Define types that match UniversalPrivacyHook
+    struct InternalTransfer {
+        address from;
+        address to;
+        address token;
+        uint256 amount;
+    }
+
+    struct NetSwap {
+        address tokenIn;
+        address tokenOut;
+        uint256 amountIn;
+        uint256 amountOut;
+    }
     
     // Track submitted intents
     mapping(bytes32 => Intent) public intents;
@@ -223,8 +238,8 @@ contract MockPrivacyHook {
      */
     function settleBatch(
         bytes32 batchId,
-        ISwapManager.TokenTransfer[] calldata internalizedTransfers,
-        ISwapManager.NetSwap calldata netSwap,
+        InternalTransfer[] calldata internalizedTransfers,
+        NetSwap calldata netSwap,
         bool hasNetSwap
     ) external {
         require(msg.sender == address(swapManager), "Only SwapManager");

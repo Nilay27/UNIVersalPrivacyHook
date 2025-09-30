@@ -124,13 +124,24 @@ export const decryptAmount = async (encryptedAmount: string): Promise<bigint> =>
 };
 
 // Single encryption (uses batch with one value)
-export const encryptAmount = async (amount: bigint): Promise<bigint> => {
-    const result = await batchEncryptAmounts([amount]);
+export const encryptAmount = async (
+    amount: bigint,
+    userAddress?: string,
+    contractAddress?: string
+): Promise<bigint> => {
+    const result = await batchEncryptAmounts([amount], userAddress, contractAddress);
     return result.encryptedAmounts[0];
 };
 
 // True batch encryption for multiple amounts (no loops)
-export const batchEncryptAmounts = async (amounts: bigint[]): Promise<{
+// @param amounts - Array of plaintext amounts to encrypt
+// @param userAddress - msg.sender when FHE.fromExternal is called (SwapManager for settlements, user for intents)
+// @param contractAddress - Contract that calls FHE.fromExternal (Hook)
+export const batchEncryptAmounts = async (
+    amounts: bigint[],
+    userAddress?: string,
+    contractAddress?: string
+): Promise<{
     encryptedAmounts: bigint[];
     inputProof: string;
 }> => {
@@ -141,10 +152,18 @@ export const batchEncryptAmounts = async (amounts: bigint[]): Promise<{
 
         console.log(`Batch encrypting ${amounts.length} amounts in single call...`);
 
+        // Addresses must be explicitly provided to ensure correct context
+        // contractAddress = contract that calls FHE.fromExternal (Hook)
+        // userAddress = msg.sender when fromExternal is called (SwapManager for settlements, user wallet for intents)
+        if (!userAddress || !contractAddress) {
+            throw new Error("userAddress and contractAddress must be provided for encryption context");
+        }
+
         // Create single encrypted input for all values
+        // Note: Zama SDK parameter order is (contractAddress, userAddress)
         const input = fhevmInstance.createEncryptedInput(
-            process.env.HOOK_ADDRESS || ethers.ZeroAddress,
-            operatorSigner?.address || ethers.ZeroAddress
+            contractAddress,
+            userAddress
         );
 
         // Add all amounts to the same input
@@ -194,20 +213,19 @@ export const batchDecryptAmounts = async (encryptedAmounts: string[]): Promise<b
         const handleContractPairs = encryptedAmounts.map(encryptedAmount => {
             let encryptedHandle: string;
 
-            // Decode the handle from the bytes data
+            // Handle is already a string (uint256 as string from intent decoding)
+            // Convert to hex format for FHEVM SDK, padded to 32 bytes (64 hex chars)
             if (encryptedAmount.startsWith('0x')) {
-                const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
-                    ["uint256"],
-                    encryptedAmount
-                );
-                encryptedHandle = decoded[0].toString();
+                // Already hex - ensure it's padded to 64 chars
+                encryptedHandle = ethers.zeroPadValue(encryptedAmount, 32);
             } else {
-                encryptedHandle = encryptedAmount;
+                // Convert decimal string to hex and pad to 32 bytes
+                encryptedHandle = ethers.zeroPadValue('0x' + BigInt(encryptedAmount).toString(16), 32);
             }
 
             return {
                 handle: encryptedHandle,
-                contractAddress: process.env.SWAP_MANAGER_ADDRESS || ethers.ZeroAddress
+                contractAddress: "0x32841c9E0245C4B1a9cc29137d7E1F078e6f0080" // UniversalPrivacyHook where handles were created
             };
         });
 
@@ -215,7 +233,7 @@ export const batchDecryptAmounts = async (encryptedAmounts: string[]): Promise<b
         const { publicKey, privateKey } = fhevmInstance.generateKeypair();
 
         // Create signature once for batch
-        const contractAddresses = [process.env.SWAP_MANAGER_ADDRESS || ethers.ZeroAddress];
+        const contractAddresses = ["0x32841c9E0245C4B1a9cc29137d7E1F078e6f0080"]; // UniversalPrivacyHook
         const startTimestamp = Math.floor(Date.now() / 1000);
         const durationDays = 7;
 

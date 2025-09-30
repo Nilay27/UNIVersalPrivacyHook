@@ -1,0 +1,10 @@
+{
+  "addresses": {
+    "rewardsOwner": "0x0cD73A4E3d34D5488BC4E547fECeDAc86305dB9d",
+    "rewardsInitiator": "0x0cD73A4E3d34D5488BC4E547fECeDAc86305dB9d"
+  },
+  "keys": {
+    "rewardsOwner": "0",
+    "rewardsInitiator": "0"
+  }
+}
