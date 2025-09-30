@@ -34,7 +34,7 @@ async function cancelPendingTransactions() {
 
         console.log('Cancellation tx sent:', tx.hash);
         const receipt = await tx.wait();
-        console.log('Cancellation confirmed in block:', receipt.blockNumber);
+        console.log('Cancellation confirmed in block:', receipt?.blockNumber);
     } else {
         console.log('No pending transactions found');
     }
