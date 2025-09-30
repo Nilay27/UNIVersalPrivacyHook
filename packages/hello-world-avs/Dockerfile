@@ -8,4 +8,8 @@ RUN npm install
 
 COPY . .
 
-CMD ["npm", "start"]
+# Build TypeScript
+RUN npm run build
+
+# Start both services (helper + operator)
+CMD ["npm", "run", "start:all"]

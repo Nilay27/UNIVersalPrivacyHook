@@ -31,6 +31,5 @@ target/
 debug/
 
 yarn.lock
-contracts/deployments/
 
 **/.DS_Store

@@ -1,0 +1,10 @@
+{
+  "addresses": {
+    "mockPrivacyHook": "0xD5724171C2b7f0AA717a324626050BD05767e2C6",
+    "swapManager": "0x87006e75a5B6bE9D1bbF61AC8Cd84f05D9140589"
+  },
+  "lastUpdate": {
+    "block_number": "200",
+    "timestamp": "1758265012"
+  }
+}

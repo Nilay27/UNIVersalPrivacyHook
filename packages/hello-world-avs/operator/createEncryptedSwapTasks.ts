@@ -20,16 +20,15 @@ const SWAP_MANAGER_ADDRESS = "0xFbce8804FfC5413d60093702664ABfd71Ce0E592";
 console.log("Using UniversalPrivacyHook at:", UNIVERSAL_PRIVACY_HOOK);
 console.log("Using SwapManager at:", SWAP_MANAGER_ADDRESS);
 
-// Load UniversalPrivacyHook ABI from hardhat artifacts
+// Load UniversalPrivacyHook ABI from abis folder
 let UniversalHookABI: any;
 try {
-    const UniversalHookArtifact = JSON.parse(
-        fs.readFileSync(path.resolve(__dirname, '../../fhevm-hardhat-template/artifacts/contracts/UniversalPrivacyHook.sol/UniversalPrivacyHook.json'), 'utf8')
+    UniversalHookABI = JSON.parse(
+        fs.readFileSync(path.resolve(__dirname, '../abis/UniversalPrivacyHook.json'), 'utf8')
     );
-    UniversalHookABI = UniversalHookArtifact.abi;
 } catch (e) {
-    console.error("UniversalPrivacyHook ABI not found. Please compile the contracts first.");
-    console.error("Run: cd packages/fhevm-hardhat-template && npm run compile");
+    console.error("UniversalPrivacyHook ABI not found at abis/UniversalPrivacyHook.json");
+    console.error(e);
     process.exit(1);
 }
 

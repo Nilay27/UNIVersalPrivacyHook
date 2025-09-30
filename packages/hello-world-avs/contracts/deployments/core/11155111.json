@@ -1,0 +1,19 @@
+{
+  "addresses": {
+    "proxyAdmin": "0x56E88228818C3B5f18CaB72Cbf971e8B308a0e04",
+    "delegationManager": "0xD4A7E1Bd8015057293f0D0A557088c286942e84b",
+    "strategyManager": "0x2E3D6c0744b10eb0A4e6F679F71554a39Ec47a5D",
+    "eigenPodManager": "0x56BfEb94879F4543E756d26103976c567256034a",
+    "avsDirectory": "0xa789c91ECDdae96865913130B786140Ee17aF545",
+    "rewardsCoordinator": "0x5ae8152fb88c26ff9ca5C014c94fca3c68029349",
+    "allocationManager": "0x42583067658071247ec8CE0A516A58f682002d07",
+    "permissionController": "0x44632dfBdCb6D3E21EF613B0ca8A6A0c618F5a37",
+    "pauserRegistry": "0x63AA20f36b1D8bF07116619094fd3Ed7f02e4B20",
+    "strategyFactory": "0x066cF95c1bf0927124DFB8B02B401bc23A79730D",
+    "strategyBeacon": "0x427e627Bc7E83cac0f84337d3Ad94230C32697D3",
+    "eigenPodBeacon": "0x0e19E56E41D42137d00dD4f51EC2F613E50cAcf4",
+    "eigenStrategy": "0x8E93249a6C37a32024756aaBd813E6139b17D1d5",
+    "wethStrategy": "0x424246eF71b01ee33aA33aC590fd9a0855F5eFbc",
+    "stethStrategy": "0x8b29d91e67b013e855EaFe0ad704aC4Ab086a574"
+  }
+}
