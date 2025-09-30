@@ -28,7 +28,7 @@ interface IFHERC20 is IERC20 {
 
     // -------- Decrypt Balance Functions --------
     function requestBalanceDecryption(address user) external returns(uint256);
-    function finalizeBalanceDecryption(uint256 requestId, uint128 decryptedBalance, bytes[] memory signatures) external;
+    function finalizeBalanceDecryption(uint256 requestId, bytes memory cleartexts, bytes memory decryptionProof) external;
 
     // -------- Encrypted Wrapping Functions --------
     function wrap(address user, uint128 amount) external;
@@ -36,7 +36,7 @@ interface IFHERC20 is IERC20 {
     // -------- Encrypted Unwrapping Functions --------
     function requestUnwrap(address user, externalEuint128 amount, bytes calldata inputProof) external returns (euint128);
     function requestUnwrap(address user, euint128 amount) external returns (euint128);
-    function finalizeUnwrap(uint256 requestId, uint128 amount, bytes[] memory signatures) external;
+    function finalizeUnwrap(uint256 requestId, bytes memory cleartexts, bytes memory decryptionProof) external;
 
     // -------- View for encrypted balances --------
     function encBalances(address user) external view returns (euint128);

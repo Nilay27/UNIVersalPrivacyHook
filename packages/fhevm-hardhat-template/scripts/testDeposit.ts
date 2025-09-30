@@ -2,7 +2,7 @@ import { ethers, fhevm } from "hardhat";
 
 // Deployed contract addresses on Sepolia
 const DEPLOYED_CONTRACTS = {
-  UniversalPrivacyHook: "0x90a3Ca02cc80F34A105eFDfDaC8F061F8F770080", // Your deployed hook
+  UniversalPrivacyHook: "0x32841c9E0245C4B1a9cc29137d7E1F078e6f0080", // Your deployed hook
   MockUSDC: "0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1", // Will load from deployments
   MockUSDT: "0xB1D9519e953B8513a4754f9B33d37eDba90c001D", // Will load from deployments
   PoolManager: "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
@@ -92,7 +92,7 @@ async function main() {
     console.log("Approved", ethers.formatUnits(depositAmount, 6), "USDC");
     
     // Step 4: Check if encrypted token exists (optional)
-    const poolId = "0x1706511516D9D7794D66A45EE230280F1B1D1D479311E7AAF38746C339CFA653"
+    const poolId = "E318B7788A806E4CA485901C3BE5CE7F822FDF7854543CF2E38B52F4BC31E2C3"
     
     
     

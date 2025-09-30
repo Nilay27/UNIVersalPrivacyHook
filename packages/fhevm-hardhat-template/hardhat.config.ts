@@ -46,6 +46,10 @@ const config: HardhatUserConfig = {
         mnemonic: MNEMONIC,
       },
       chainId: 31337,
+      forking: process.env.FORK_SEPOLIA ? {
+        url: ANKR_API_KEY ? `https://rpc.ankr.com/eth_sepolia/${ANKR_API_KEY}` : "https://rpc.ankr.com/eth_sepolia",
+        blockNumber: 9283500 // Fixed block for consistent testing
+      } : undefined,
     },
     anvil: {
       accounts: {

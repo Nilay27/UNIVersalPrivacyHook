@@ -3,7 +3,7 @@ import type { TaskArguments } from "hardhat/types";
 
 // Deployed contract addresses on Sepolia
 const DEPLOYED_CONTRACTS = {
-  UniversalPrivacyHook: "0x90a3Ca02cc80F34A105eFDfDaC8F061F8F770080",
+  UniversalPrivacyHook: "0x32841c9E0245C4B1a9cc29137d7E1F078e6f0080",
   MockUSDC: "0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1",
   MockUSDT: "0xB1D9519e953B8513a4754f9B33d37eDba90c001D",
   PoolManager: "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
@@ -11,7 +11,7 @@ const DEPLOYED_CONTRACTS = {
 
 const FEE = 3000;
 const TICK_SPACING = 60;
-const POOL_ID = "0x1706511516D9D7794D66A45EE230280F1B1D1D479311E7AAF38746C339CFA653";
+const POOL_ID = "E318B7788A806E4CA485901C3BE5CE7F822FDF7854543CF2E38B52F4BC31E2C3";
 
 /**
  * Test deposit functionality
@@ -33,6 +33,7 @@ task("task:test-deposit", "Test deposit to UniversalPrivacyHook")
     );
     
     const usdc = await ethers.getContractAt("MockERC20", DEPLOYED_CONTRACTS.MockUSDC);
+    const usdt = await ethers.getContractAt("MockERC20", DEPLOYED_CONTRACTS.MockUSDT);
     
     // Build pool key
     let currency0 = DEPLOYED_CONTRACTS.MockUSDC;
@@ -93,7 +94,32 @@ task("task:test-deposit", "Test deposit to UniversalPrivacyHook")
       console.log("Encrypted token balance:", ethers.formatUnits(encBalance, 6));
     }
     
-    console.log("\n✅ Deposit test complete!");
+    console.log("\n✅ Deposit USDC test complete!");
+
+    console.log("\n==================== Testing Deposit USDT ====================\n");
+    
+    const usdtBalance = await usdt.balanceOf(signer.address);
+    console.log("Current USDT balance:", ethers.formatUnits(usdtBalance, 6), "USDT");
+    
+    const depositAmountUSDT = ethers.parseUnits("100", 6);
+    
+    if (usdtBalance < depositAmountUSDT) {
+      console.log("\nMinting USDT for testing...");
+      const mintTx = await usdt.mint(signer.address, depositAmountUSDT);
+      await mintTx.wait();
+      console.log("Minted", ethers.formatUnits(depositAmountUSDT, 6), "USDT");
+    }
+    
+    const approveTxUSDT = await usdt.approve(DEPLOYED_CONTRACTS.UniversalPrivacyHook, depositAmountUSDT);
+    await approveTx.wait();
+    console.log("Approved", ethers.formatUnits(depositAmountUSDT, 6), "USDT");
+
+    console.log("\nDepositing USDT to hook...");
+    const depositTxUSDT = await hook.deposit(poolKey, currency1, depositAmountUSDT);
+    await depositTx.wait();
+    console.log("Transaction confirmed in block:", receipt.blockNumber);
+    
+    console.log("\n✅ Deposit USDT test complete!");
   });
 
 /**

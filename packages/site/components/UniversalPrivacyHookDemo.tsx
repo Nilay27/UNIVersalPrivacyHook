@@ -333,10 +333,16 @@ export function UniversalPrivacyHookDemo() {
       const amountBigInt = BigInt(parsedAmount.toString());
       console.log('Encrypting amount:', ethers.formatUnits(amountBigInt, 6), 'tokens');
       
-      // The FHEVM library expects Number, not BigInt
+      // Try passing BigInt directly like the AVS does
       if (typeof (input as any).add128 === 'function') {
-        console.log('Using add128 for encryption');
-        (input as any).add128(Number(amountBigInt));
+        console.log('Using add128 for encryption with BigInt:', amountBigInt);
+        try {
+          // First try with BigInt directly (like AVS)
+          (input as any).add128(amountBigInt);
+        } catch (err) {
+          console.log('BigInt failed, trying with Number:', err);
+          (input as any).add128(Number(amountBigInt));
+        }
       } else if (typeof (input as any).add64 === 'function') {
         console.log('Warning: Using add64 instead of add128');
         // For amounts that don't fit in 64 bits, we need to handle carefully
