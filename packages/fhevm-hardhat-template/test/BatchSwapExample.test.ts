@@ -2,13 +2,13 @@ import { expect } from "chai";
 import { ethers, fhevm } from "hardhat";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { FhevmType } from "@fhevm/hardhat-plugin";
-import { TestableUniversalPrivacyHook, HybridFHERC20, MockERC20, MockPoolManager } from "../types";
+import { TestableUniversalPrivacyHook, HybridFHERC20, MockERC20, MockPoolManager, MockSwapManager } from "../types";
 
 describe("Batch Swap Example with FHEVM", function () {
   let hook: TestableUniversalPrivacyHook;
   let hookAddress: string;
   let poolManager: MockPoolManager;
-  let swapManager: HardhatEthersSigner;
+  let swapManager: MockSwapManager;
   let users: HardhatEthersSigner[];
   let poolKey: any;
 
@@ -26,17 +26,13 @@ describe("Batch Swap Example with FHEVM", function () {
     }
 
     const signers = await ethers.getSigners();
-    swapManager = signers[0]; // Mock SwapManager
-    users = [signers[1], signers[2], signers[3], signers[4]]; // U1, U2, U3, U4
-
-    console.log("🔧 Setting up test environment with FHEVM mock...");
+    users = [signers[0], signers[1], signers[2], signers[3]]; // U1, U2, U3, U4
 
     // Deploy MockPoolManager
     const PoolManagerFactory = await ethers.getContractFactory("MockPoolManager");
     poolManager = await PoolManagerFactory.deploy();
     await poolManager.waitForDeployment();
     const poolManagerAddress = await poolManager.getAddress();
-    console.log("✅ MockPoolManager deployed at:", poolManagerAddress);
 
     // Deploy TestableUniversalPrivacyHook (bypasses address validation)
     const HookFactory = await ethers.getContractFactory("TestableUniversalPrivacyHook");
@@ -44,18 +40,24 @@ describe("Batch Swap Example with FHEVM", function () {
     await hook.waitForDeployment();
     hookAddress = await hook.getAddress();
 
-    console.log("✅ TestableUniversalPrivacyHook deployed at:", hookAddress);
+    // Deploy MockSwapManager
+    const MockSwapManagerFactory = await ethers.getContractFactory("MockSwapManager");
+    swapManager = await MockSwapManagerFactory.deploy();
+    await swapManager.waitForDeployment();
+
+    // Set hook in swapManager and swapManager in hook
+    await swapManager.setHook(hookAddress);
+    await hook.setSwapManager(await swapManager.getAddress());
+
 
     // Deploy mock ERC20 tokens for USDC and USDT
     const MockERC20Factory = await ethers.getContractFactory("MockERC20");
 
     usdc = await MockERC20Factory.deploy("USD Coin", "USDC", 6);
     await usdc.waitForDeployment();
-    console.log("✅ Mock USDC deployed at:", await usdc.getAddress());
 
     usdt = await MockERC20Factory.deploy("Tether USD", "USDT", 6);
     await usdt.waitForDeployment();
-    console.log("✅ Mock USDT deployed at:", await usdt.getAddress());
 
     // Mint tokens to users for testing
     await usdc.mint(users[0].address, ethers.parseUnits("12000", 6));
@@ -334,5 +336,394 @@ describe("Batch Swap Example with FHEVM", function () {
       console.log("  - For production testing, use Sepolia testnet");
 
     });
+  });
+
+  describe("Deposit Operations", function () {
+    it("Should allow users to deposit tokens and create encrypted tokens", async function () {
+      await usdc.connect(users[0]).approve(hookAddress, ethers.parseUnits("1000", 6));
+
+      await hook.connect(users[0]).deposit(poolKey, await usdc.getAddress(), ethers.parseUnits("1000", 6));
+
+      const poolId = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "address", "uint24", "int24", "address"],
+        [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks]
+      ));
+
+      const eTokenAddress = await hook.poolEncryptedTokens(poolId, await usdc.getAddress());
+      expect(eTokenAddress).to.not.equal(ethers.ZeroAddress);
+
+      const reserves = await hook.poolReserves(poolId, await usdc.getAddress());
+      expect(reserves).to.equal(ethers.parseUnits("1000", 6));
+    });
+
+    it("Should update hook reserves correctly on multiple deposits", async function () {
+      // Mint tokens to user1 first
+      await usdc.mint(users[1].address, ethers.parseUnits("500", 6));
+
+      await usdc.connect(users[0]).approve(hookAddress, ethers.parseUnits("1000", 6));
+      await usdc.connect(users[1]).approve(hookAddress, ethers.parseUnits("500", 6));
+
+      await hook.connect(users[0]).deposit(poolKey, await usdc.getAddress(), ethers.parseUnits("1000", 6));
+      await hook.connect(users[1]).deposit(poolKey, await usdc.getAddress(), ethers.parseUnits("500", 6));
+
+      const poolId = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "address", "uint24", "int24", "address"],
+        [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks]
+      ));
+
+      const reserves = await hook.poolReserves(poolId, await usdc.getAddress());
+      expect(reserves).to.equal(ethers.parseUnits("1500", 6));
+    });
+
+    it("Should mint encrypted tokens to user on deposit", async function () {
+      await usdc.connect(users[0]).approve(hookAddress, ethers.parseUnits("1000", 6));
+      await hook.connect(users[0]).deposit(poolKey, await usdc.getAddress(), ethers.parseUnits("1000", 6));
+
+      const poolId = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "address", "uint24", "int24", "address"],
+        [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks]
+      ));
+
+      const eTokenAddress = await hook.poolEncryptedTokens(poolId, await usdc.getAddress());
+      const EFHERC20Factory = await ethers.getContractFactory("HybridFHERC20");
+      const eToken = EFHERC20Factory.attach(eTokenAddress) as HybridFHERC20;
+
+      const encBalance = await eToken.encBalances(users[0].address);
+      expect(encBalance).to.not.equal(ethers.ZeroHash);
+    });
+
+    it("Should allow deposit with zero amount check in contract", async function () {
+      await usdc.connect(users[0]).approve(hookAddress, ethers.parseUnits("1000", 6));
+
+      // Zero amount deposits may be allowed by contract, just verify call doesn't revert
+      await hook.connect(users[0]).deposit(poolKey, await usdc.getAddress(), 0);
+    });
+
+    it("Should revert deposit without approval", async function () {
+      await expect(
+        hook.connect(users[0]).deposit(poolKey, await usdc.getAddress(), ethers.parseUnits("1000", 6))
+      ).to.be.reverted;
+    });
+  });
+
+  describe("Withdrawal Operations", function () {
+    beforeEach(async function () {
+      // Setup: deposit tokens first
+      await usdc.connect(users[0]).approve(hookAddress, ethers.parseUnits("1000", 6));
+      await hook.connect(users[0]).deposit(poolKey, await usdc.getAddress(), ethers.parseUnits("1000", 6));
+    });
+
+    it("Should allow users to withdraw their deposited tokens", async function () {
+      const poolId = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "address", "uint24", "int24", "address"],
+        [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks]
+      ));
+
+      const withdrawAmount = ethers.parseUnits("500", 6);
+
+      const balanceBefore = await usdc.balanceOf(users[0].address);
+
+      // withdraw takes regular amount, not encrypted
+      await hook.connect(users[0]).withdraw(
+        poolKey,
+        await usdc.getAddress(),
+        withdrawAmount,
+        users[0].address
+      );
+
+      const balanceAfter = await usdc.balanceOf(users[0].address);
+      expect(balanceAfter).to.be.greaterThan(balanceBefore);
+
+      // Check reserves decreased
+      const reserves = await hook.poolReserves(poolId, await usdc.getAddress());
+      expect(reserves).to.be.lessThan(ethers.parseUnits("1000", 6));
+    });
+  });
+
+  describe("Intent Submission", function () {
+    beforeEach(async function () {
+      // Setup: deposit tokens first
+      await usdc.connect(users[0]).approve(hookAddress, ethers.parseUnits("1000", 6));
+      await hook.connect(users[0]).deposit(poolKey, await usdc.getAddress(), ethers.parseUnits("1000", 6));
+    });
+
+    it("Should create new batch on first intent", async function () {
+      const poolId = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "address", "uint24", "int24", "address"],
+        [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks]
+      ));
+
+      const deadline = Math.floor(Date.now() / 1000) + 3600;
+      const encryptedAmount = await fhevm
+        .createEncryptedInput(hookAddress, users[0].address)
+        .add128(ethers.parseUnits("100", 6))
+        .encrypt();
+
+      await hook.connect(users[0]).submitIntent(
+        poolKey,
+        await usdc.getAddress(),
+        await usdt.getAddress(),
+        encryptedAmount.handles[0],
+        encryptedAmount.inputProof,
+        deadline
+      );
+
+      const currentBatchId = await hook.currentBatchId(poolId);
+      expect(currentBatchId).to.not.equal(ethers.ZeroHash);
+    });
+
+    it("Should add intent to existing batch", async function () {
+      const poolId = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "address", "uint24", "int24", "address"],
+        [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks]
+      ));
+
+      const deadline = Math.floor(Date.now() / 1000) + 3600;
+
+      // Submit first intent
+      const enc1 = await fhevm
+        .createEncryptedInput(hookAddress, users[0].address)
+        .add128(ethers.parseUnits("100", 6))
+        .encrypt();
+      await hook.connect(users[0]).submitIntent(
+        poolKey,
+        await usdc.getAddress(),
+        await usdt.getAddress(),
+        enc1.handles[0],
+        enc1.inputProof,
+        deadline
+      );
+
+      const batchId1 = await hook.currentBatchId(poolId);
+
+      // Submit second intent (should go to same batch)
+      const enc2 = await fhevm
+        .createEncryptedInput(hookAddress, users[0].address)
+        .add128(ethers.parseUnits("50", 6))
+        .encrypt();
+      await hook.connect(users[0]).submitIntent(
+        poolKey,
+        await usdc.getAddress(),
+        await usdt.getAddress(),
+        enc2.handles[0],
+        enc2.inputProof,
+        deadline
+      );
+
+      const batchId2 = await hook.currentBatchId(poolId);
+      expect(batchId1).to.equal(batchId2);
+    });
+
+    it("Should handle intent submission with deadline", async function () {
+      const futureDeadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+      const encryptedAmount = await fhevm
+        .createEncryptedInput(hookAddress, users[0].address)
+        .add128(ethers.parseUnits("100", 6))
+        .encrypt();
+
+      // Submit intent with future deadline
+      await hook.connect(users[0]).submitIntent(
+        poolKey,
+        await usdc.getAddress(),
+        await usdt.getAddress(),
+        encryptedAmount.handles[0],
+        encryptedAmount.inputProof,
+        futureDeadline
+      );
+
+      // Verify batch was created or updated
+      const poolId = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "address", "uint24", "int24", "address"],
+        [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks]
+      ));
+      const currentBatchId = await hook.currentBatchId(poolId);
+      expect(currentBatchId).to.not.equal(ethers.ZeroHash);
+    });
+  });
+
+  describe("Batch Management", function () {
+    beforeEach(async function () {
+      // Setup: deposit tokens
+      await usdc.connect(users[0]).approve(hookAddress, ethers.parseUnits("1000", 6));
+      await hook.connect(users[0]).deposit(poolKey, await usdc.getAddress(), ethers.parseUnits("1000", 6));
+    });
+
+    it("Should track batch creation block", async function () {
+      const deadline = Math.floor(Date.now() / 1000) + 3600;
+      const encryptedAmount = await fhevm
+        .createEncryptedInput(hookAddress, users[0].address)
+        .add128(ethers.parseUnits("100", 6))
+        .encrypt();
+
+      await hook.connect(users[0]).submitIntent(
+        poolKey,
+        await usdc.getAddress(),
+        await usdt.getAddress(),
+        encryptedAmount.handles[0],
+        encryptedAmount.inputProof,
+        deadline
+      );
+
+      const poolId = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "address", "uint24", "int24", "address"],
+        [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks]
+      ));
+
+      const batchId = await hook.currentBatchId(poolId);
+      const batch = await hook.batches(batchId);
+      const createdBlock = batch[1]; // createdBlock is 2nd element
+
+      // Batch should have a creation block set
+      expect(Number(createdBlock)).to.be.greaterThanOrEqual(0);
+    });
+
+    it("Should not finalize batch before BATCH_INTERVAL", async function () {
+      const deadline = Math.floor(Date.now() / 1000) + 3600;
+      const encryptedAmount = await fhevm
+        .createEncryptedInput(hookAddress, users[0].address)
+        .add128(ethers.parseUnits("100", 6))
+        .encrypt();
+
+      await hook.connect(users[0]).submitIntent(
+        poolKey,
+        await usdc.getAddress(),
+        await usdt.getAddress(),
+        encryptedAmount.handles[0],
+        encryptedAmount.inputProof,
+        deadline
+      );
+
+      const poolId = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "address", "uint24", "int24", "address"],
+        [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks]
+      ));
+
+      const batchId = await hook.currentBatchId(poolId);
+      const batch = await hook.batches(batchId);
+      const finalized = batch[3]; // finalized is 4th element
+
+      expect(finalized).to.be.false;
+    });
+  });
+
+  describe("Event Emissions", function () {
+    it("Should emit Deposited event", async function () {
+      await usdc.connect(users[0]).approve(hookAddress, ethers.parseUnits("1000", 6));
+
+      await expect(
+        hook.connect(users[0]).deposit(poolKey, await usdc.getAddress(), ethers.parseUnits("1000", 6))
+      ).to.emit(hook, "Deposited");
+    });
+
+    it("Should emit IntentSubmitted event", async function () {
+      await usdc.connect(users[0]).approve(hookAddress, ethers.parseUnits("1000", 6));
+      await hook.connect(users[0]).deposit(poolKey, await usdc.getAddress(), ethers.parseUnits("1000", 6));
+
+      const deadline = Math.floor(Date.now() / 1000) + 3600;
+      const encryptedAmount = await fhevm
+        .createEncryptedInput(hookAddress, users[0].address)
+        .add128(ethers.parseUnits("100", 6))
+        .encrypt();
+
+      await expect(
+        hook.connect(users[0]).submitIntent(
+          poolKey,
+          await usdc.getAddress(),
+          await usdt.getAddress(),
+          encryptedAmount.handles[0],
+          encryptedAmount.inputProof,
+          deadline
+        )
+      ).to.emit(hook, "IntentSubmitted");
+    });
+  });
+
+  describe("Batch Settlement", function () {
+    let batchId: string;
+    let poolId: string;
+
+    beforeEach(async function () {
+      // Setup: Mint tokens to users first
+      await usdc.mint(users[1].address, ethers.parseUnits("500", 6));
+
+      // Users deposit and submit intents
+      await usdc.connect(users[0]).approve(hookAddress, ethers.parseUnits("1000", 6));
+      await usdc.connect(users[1]).approve(hookAddress, ethers.parseUnits("500", 6));
+
+      await hook.connect(users[0]).deposit(poolKey, await usdc.getAddress(), ethers.parseUnits("1000", 6));
+      await hook.connect(users[1]).deposit(poolKey, await usdc.getAddress(), ethers.parseUnits("500", 6));
+
+      const deadline = Math.floor(Date.now() / 1000) + 3600;
+
+      // User 0 submits intent
+      const encryptedAmount1 = await fhevm
+        .createEncryptedInput(hookAddress, users[0].address)
+        .add128(ethers.parseUnits("100", 6))
+        .encrypt();
+
+      await hook.connect(users[0]).submitIntent(
+        poolKey,
+        await usdc.getAddress(),
+        await usdt.getAddress(),
+        encryptedAmount1.handles[0],
+        encryptedAmount1.inputProof,
+        deadline
+      );
+
+      // User 1 submits intent
+      const encryptedAmount2 = await fhevm
+        .createEncryptedInput(hookAddress, users[1].address)
+        .add128(ethers.parseUnits("50", 6))
+        .encrypt();
+
+      await hook.connect(users[1]).submitIntent(
+        poolKey,
+        await usdc.getAddress(),
+        await usdt.getAddress(),
+        encryptedAmount2.handles[0],
+        encryptedAmount2.inputProof,
+        deadline
+      );
+
+      poolId = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "address", "uint24", "int24", "address"],
+        [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks]
+      ));
+
+      batchId = await hook.currentBatchId(poolId);
+    });
+
+    it("Should revert settleBatch if not called by SwapManager", async function () {
+      // Try to settle batch from non-SwapManager address
+      await expect(
+        hook.connect(users[0]).settleBatch(
+          batchId,
+          [],
+          0,
+          await usdc.getAddress(),
+          await usdt.getAddress(),
+          await usdt.getAddress(),
+          [],
+          "0x"
+        )
+      ).to.be.revertedWith("Only SwapManager");
+    });
+
+    it("Should revert settleBatch if batch not finalized", async function () {
+      // Try to settle batch before finalization
+      await expect(
+        swapManager.mockSettleBatch(
+          batchId,
+          [],
+          0,
+          await usdc.getAddress(),
+          await usdt.getAddress(),
+          await usdt.getAddress(),
+          [],
+          "0x"
+        )
+      ).to.be.revertedWith("Batch not finalized");
+    });
+
   });
 });

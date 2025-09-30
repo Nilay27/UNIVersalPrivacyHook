@@ -12,7 +12,7 @@ type Signers = {
 
 async function deployFixture() {
   const factory = (await ethers.getContractFactory("HybridFHERC20")) as HybridFHERC20__factory;
-  const token = (await factory.deploy("Test Token", "TEST")) as HybridFHERC20;
+  const token = (await factory.deploy("Test Token", "TEST", 6)) as HybridFHERC20; // Add decimals parameter
   const tokenAddress = await token.getAddress();
 
   return { token, tokenAddress };
@@ -44,83 +44,141 @@ describe("HybridFHERC20", function () {
       expect(await token.symbol()).to.equal("TEST");
     });
 
+    it("should have correct decimals", async function () {
+      expect(await token.decimals()).to.equal(6);
+    });
+
+    it("should start with zero total supply", async function () {
+      expect(await token.totalSupply()).to.equal(0);
+    });
+
     it("should mint regular tokens", async function () {
-      const amount = ethers.parseEther("100");
+      const amount = ethers.parseUnits("100", 6);
       await token.mint(signers.alice.address, amount);
       expect(await token.balanceOf(signers.alice.address)).to.equal(amount);
+      expect(await token.totalSupply()).to.equal(amount);
+    });
+
+    it("should mint to multiple users", async function () {
+      const amount1 = ethers.parseUnits("100", 6);
+      const amount2 = ethers.parseUnits("200", 6);
+
+      await token.mint(signers.alice.address, amount1);
+      await token.mint(signers.bob.address, amount2);
+
+      expect(await token.balanceOf(signers.alice.address)).to.equal(amount1);
+      expect(await token.balanceOf(signers.bob.address)).to.equal(amount2);
+      expect(await token.totalSupply()).to.equal(amount1 + amount2);
     });
 
     it("should burn regular tokens", async function () {
-      const amount = ethers.parseEther("100");
+      const amount = ethers.parseUnits("100", 6);
       await token.mint(signers.alice.address, amount);
-      await token.burn(signers.alice.address, ethers.parseEther("30"));
-      expect(await token.balanceOf(signers.alice.address)).to.equal(ethers.parseEther("70"));
+      await token.burn(signers.alice.address, ethers.parseUnits("30", 6));
+
+      expect(await token.balanceOf(signers.alice.address)).to.equal(ethers.parseUnits("70", 6));
+      expect(await token.totalSupply()).to.equal(ethers.parseUnits("70", 6));
+    });
+
+    it("should burn all tokens", async function () {
+      const amount = ethers.parseUnits("100", 6);
+      await token.mint(signers.alice.address, amount);
+      await token.burn(signers.alice.address, amount);
+
+      expect(await token.balanceOf(signers.alice.address)).to.equal(0);
+      expect(await token.totalSupply()).to.equal(0);
     });
 
     it("should transfer regular tokens", async function () {
-      const amount = ethers.parseEther("100");
+      const amount = ethers.parseUnits("100", 6);
       await token.mint(signers.alice.address, amount);
-      
-      await token.connect(signers.alice).transfer(signers.bob.address, ethers.parseEther("30"));
-      expect(await token.balanceOf(signers.alice.address)).to.equal(ethers.parseEther("70"));
-      expect(await token.balanceOf(signers.bob.address)).to.equal(ethers.parseEther("30"));
+
+      await token.connect(signers.alice).transfer(signers.bob.address, ethers.parseUnits("30", 6));
+      expect(await token.balanceOf(signers.alice.address)).to.equal(ethers.parseUnits("70", 6));
+      expect(await token.balanceOf(signers.bob.address)).to.equal(ethers.parseUnits("30", 6));
+    });
+
+    it("should emit Transfer event on mint", async function () {
+      const amount = ethers.parseUnits("100", 6);
+      await expect(token.mint(signers.alice.address, amount))
+        .to.emit(token, "Transfer")
+        .withArgs(ethers.ZeroAddress, signers.alice.address, amount);
+    });
+
+    it("should emit Transfer event on burn", async function () {
+      const amount = ethers.parseUnits("100", 6);
+      await token.mint(signers.alice.address, amount);
+
+      const burnAmount = ethers.parseUnits("30", 6);
+      await expect(token.burn(signers.alice.address, burnAmount))
+        .to.emit(token, "Transfer")
+        .withArgs(signers.alice.address, ethers.ZeroAddress, burnAmount);
     });
   });
 
   describe("Encrypted Operations", function () {
-    it("should mint encrypted tokens with trivial encryption", async function () {
+    it("should mint encrypted tokens with encrypted input", async function () {
       const amount = 100n;
-      
+
       // Create encrypted input using the correct method
       const encryptedAmount = await fhevm
         .createEncryptedInput(tokenAddress, signers.alice.address)
         .add128(amount)
         .encrypt();
-      
+
       // Mint encrypted tokens
       await token.connect(signers.alice)["mintEncrypted(address,bytes32,bytes)"](
         signers.alice.address,
         encryptedAmount.handles[0],
         encryptedAmount.inputProof
       );
-      
-      // Check encrypted balance
+
+      // Check encrypted balance exists (non-zero handle)
       const encBalance = await token.encBalances(signers.alice.address);
       expect(encBalance).to.not.equal(ethers.ZeroHash);
+
+      // Public balance should remain 0
+      expect(await token.balanceOf(signers.alice.address)).to.equal(0);
     });
+
 
     it("should burn encrypted tokens", async function () {
       const mintAmount = 100n;
       const burnAmount = 30n;
-      
+
       // Mint encrypted tokens first
       const encryptedMintAmount = await fhevm
         .createEncryptedInput(tokenAddress, signers.alice.address)
         .add128(mintAmount)
         .encrypt();
-      
+
       await token.connect(signers.alice)["mintEncrypted(address,bytes32,bytes)"](
         signers.alice.address,
         encryptedMintAmount.handles[0],
         encryptedMintAmount.inputProof
       );
-      
+
+      const balanceBeforeBurn = await token.encBalances(signers.alice.address);
+
       // Burn some encrypted tokens
       const encryptedBurnAmount = await fhevm
         .createEncryptedInput(tokenAddress, signers.alice.address)
         .add128(burnAmount)
         .encrypt();
-      
+
       await token.connect(signers.alice)["burnEncrypted(address,bytes32,bytes)"](
         signers.alice.address,
         encryptedBurnAmount.handles[0],
         encryptedBurnAmount.inputProof
       );
-      
-      // Check that balance changed (we can't verify exact amount without decryption)
-      const encBalance = await token.encBalances(signers.alice.address);
-      expect(encBalance).to.not.equal(ethers.ZeroHash);
+
+      const balanceAfterBurn = await token.encBalances(signers.alice.address);
+
+      // Balance should have changed
+      expect(balanceAfterBurn).to.not.equal(balanceBeforeBurn);
+      expect(balanceAfterBurn).to.not.equal(ethers.ZeroHash);
     });
+
 
     it("should transfer encrypted tokens", async function () {
       const amount = 100n;
@@ -192,6 +250,7 @@ describe("HybridFHERC20", function () {
       expect(aliceBalance).to.not.equal(ethers.ZeroHash);
       expect(bobBalance).to.not.equal(ethers.ZeroHash);
     });
+
   });
 
   describe("Edge Cases", function () {
@@ -201,7 +260,7 @@ describe("HybridFHERC20", function () {
         .createEncryptedInput(tokenAddress, signers.deployer.address)
         .add128(amount)
         .encrypt();
-      
+
       await expect(
         token["transferFromEncrypted(address,address,bytes32,bytes)"](
           ethers.ZeroAddress,
@@ -218,7 +277,7 @@ describe("HybridFHERC20", function () {
         .createEncryptedInput(tokenAddress, signers.alice.address)
         .add128(amount)
         .encrypt();
-      
+
       await expect(
         token.connect(signers.alice)["transferEncrypted(address,bytes32,bytes)"](
           ethers.ZeroAddress,
@@ -227,5 +286,6 @@ describe("HybridFHERC20", function () {
         )
       ).to.be.revertedWithCustomError(token, "HybridFHERC20__InvalidReceiver");
     });
+
   });
 });

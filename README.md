@@ -24,13 +24,15 @@
 ### 🌟 Key Innovation
 
 This project introduces a novel approach to DeFi privacy with intelligent batching:
+
+- **Complete Privacy Decoupling**: Breaks the link between encrypted intent amounts and on-chain execution - only net AMM amounts are visible on-chain, while matched trades remain fully encrypted end-to-end
 - **Encrypted Swap Amounts**: All swap amounts remain encrypted throughout the entire process
 - **MEV Protection**: Front-runners cannot see or exploit your trades
 - **Batch Settlement with Intent Matching**: AVS operators decrypt and match opposite intents, reducing AMM usage up to 100% (average 45-55% reduction)
-- **Impermanent Loss Reduction**: Matched trades are internal transfers only - no AMM interaction means zero impermanent loss for LPs
+- **Save Up to 100% of Impermanent Loss**: Users pay ZERO impermanent loss on matched trades since they never touch the AMM - only the unmatched net amount interacts with the pool
 - **Trustless Execution**: Smart contracts process encrypted data with AVS consensus
 - **User Sovereignty**: Only users can decrypt their own balances
-- **Better Execution**: Internal matching provides 1:1 pricing without slippage
+- **Perfect Execution**: Internal matching provides 1:1 exchange rate with zero slippage and zero impermanent loss
 
 ## 🏗️ Technical Architecture
 
@@ -176,13 +178,14 @@ sequenceDiagram
 ## ✨ Features
 
 ### For Users
-- 🔐 **Complete Privacy**: Swap amounts remain encrypted end-to-end
+- 🔐 **Complete Privacy**: Swap amounts remain encrypted end-to-end - matched trades NEVER appear on-chain
+- 🔓 **Privacy Decoupling**: Your encrypted intent amount is completely decoupled from on-chain execution - only the net aggregated amount hits the chain unencrypted
 - 🛡️ **MEV Protection**: Immune to sandwich attacks via batch aggregation
 - 💰 **Token Faucet**: Easy testing with mock USDC/USDT
 - 📊 **Balance Management**: View and decrypt your encrypted balances
 - 🔄 **Intent-Based Swaps**: Submit swap intents that execute asynchronously
-- 📉 **Impermanent Loss Reduction**: Matched trades don't touch the AMM at all
-- 🎯 **Perfect Pricing**: Internal matching provides 1:1 exchange rate with zero slippage
+- 💎 **Save Up to 100% of Impermanent Loss**: Pay ZERO impermanent loss on matched trades - only unmatched amounts touch the AMM
+- 🎯 **Perfect Pricing**: Internal matching provides 1:1 exchange rate with zero slippage and zero IL
 - ⚡ **AMM Usage Reduction**: Up to 100% reduction when trades are perfectly matched
 
 ### For Developers
@@ -623,7 +626,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🎬 Demo
 - **Live Website**: [universalprivatehook.vercel.app](https://universalprivatehook.vercel.app/) - Try the app with Sepolia testnet
-- **Video Walkthrough**: [Demo on Loom](https://www.loom.com/share/1429ab954de74fd087f356559e7c1b91) - Complete feature demonstration
+- **Video Walkthrough**: [Demo on YouTube](https://www.youtube.com/watch?v=sYnSRw6ADEo) - Complete feature demonstration
 
 ---
 
