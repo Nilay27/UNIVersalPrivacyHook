@@ -4,6 +4,8 @@
   "main": "index.js",
   "scripts": {
     "start:operator": "cat contracts/out/SwapManager.sol/SwapManager.json | jq -r '.abi' > abis/SwapManager.json && ts-node operator/index.ts",
+    "start:helper": "ts-node operator/createEncryptedSwapTasks.ts",
+    "start:all": "npm run start:helper & npm run start:operator",
     "start:traffic": "ts-node operator/createEncryptedSwapTasks.ts",
     "start:universal": "ts-node operator/createUniversalSwapTasks.ts",
     "start:universal-js": "node operator/createUniversalSwapTasks.js",

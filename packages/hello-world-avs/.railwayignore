@@ -1,0 +1,10 @@
+node_modules/
+.git/
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+*.log
+.env.local
+test_*.js
+decode_*.js
+TestHash.sol
