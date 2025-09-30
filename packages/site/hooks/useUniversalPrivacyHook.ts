@@ -272,6 +272,7 @@ export const useUniversalPrivacyHook = () => {
       
       // Use Cloudflare's public Sepolia RPC (no API key, no rate limits for reasonable usage)
       const publicProvider = new ethers.JsonRpcProvider('https://ethereum-sepolia-rpc.publicnode.com');
+
       const hook = new ethers.Contract(CONTRACTS.UniversalPrivacyHook, UniversalPrivacyHookABI.abi, publicProvider);
 
       // Calculate block range for last 1 hour (approximately 300 blocks on Sepolia)
@@ -287,54 +288,90 @@ export const useUniversalPrivacyHook = () => {
       const events = await hook.queryFilter(filter, oneHourAgo, currentBlock);
       
       console.log(`Found ${events.length} IntentSubmitted events`);
-      
-      // Map events to intent details
+
+      // Fetch intent details including batchId and batch status
       const intents = await Promise.all(events.map(async (event) => {
-        // Parse the event to get all arguments
+        // Parse event to get tokenIn, tokenOut, and intentId
         const parsedEvent = hook.interface.parseLog({
           topics: event.topics as string[],
           data: event.data
         });
-        
+
         const intentId = parsedEvent?.args?.intentId;
-        if (!intentId) {
-          console.warn('Could not parse intent ID from event');
-          return null;
+        let batchId = null;
+        let batchStatus = 'unknown';
+
+        if (intentId) {
+          try {
+            // Manually encode the function selector for intents(bytes32)
+            const intentsSelector = ethers.id('intents(bytes32)').slice(0, 10);
+            const intentData = await publicProvider.call({
+              to: CONTRACTS.UniversalPrivacyHook,
+              data: intentsSelector + intentId.slice(2).padStart(64, '0')
+            });
+
+            console.log('Intent data response:', intentData);
+
+            // Decode the Intent struct
+            // Intent: encAmount(bytes32), tokenIn(address), tokenOut(address), owner(address), deadline(uint64), processed(bool), poolKey(tuple), batchId(bytes32)
+            const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
+              ['bytes32', 'address', 'address', 'address', 'uint64', 'bool', 'tuple(address,address,uint24,int24,address)', 'bytes32'],
+              intentData
+            );
+            console.log('Decoded intent:', decoded);
+            batchId = decoded[7]; // batchId is at index 7
+            console.log('BatchId:', batchId);
+
+            // If we have a batchId, check batch status
+            if (batchId && batchId !== ethers.ZeroHash) {
+              // Manually encode the function selector for batches(bytes32)
+              const batchesSelector = ethers.id('batches(bytes32)').slice(0, 10);
+              console.log('Batch selector:', batchesSelector);
+              console.log('Calling batches with batchId:', batchId);
+              const batchData = await publicProvider.call({
+                to: CONTRACTS.UniversalPrivacyHook,
+                data: batchesSelector + batchId.slice(2).padStart(64, '0')
+              });
+              console.log('Batch data response:', batchData);
+
+              // Decode the Batch struct: createdBlock(uint256), submittedBlock(uint256), finalized(bool), settled(bool)
+              // Note: The intentIds array is not returned in the raw call response
+              const batchDecoded = ethers.AbiCoder.defaultAbiCoder().decode(
+                ['uint256', 'uint256', 'bool', 'bool'],
+                batchData
+              );
+              console.log('Decoded batch:', batchDecoded);
+
+              const finalized = batchDecoded[2];
+              const settled = batchDecoded[3];
+              console.log('Finalized:', finalized, 'Settled:', settled);
+
+              if (settled) {
+                batchStatus = 'settled';
+              } else if (finalized) {
+                batchStatus = 'finalized';
+              } else {
+                batchStatus = 'processing';
+              }
+            }
+          } catch (error) {
+            console.warn(`Could not fetch intent/batch data for ${intentId}`, error);
+          }
         }
-        
-        const intent = await hook.intents(intentId);
-        
-        // Log the full intent structure to debug
-        console.log(`Intent ${intentId} raw data:`, intent);
-        
-        // Check if the intent has been processed (executed)
-        // Based on the contract struct, the field is called 'processed', not 'executed'
-        const isProcessed = intent.processed === true || intent[5] === true; // processed is at index 5 in the struct
-        
-        console.log(`Intent ${intentId}:`, {
-          processed: isProcessed,
-          decrypted: intent.decrypted || intent[6],
-          decryptedAmount: intent.decryptedAmount?.toString() || '0',
-          deadline: intent.deadline?.toString()
-        });
-        
-        // Skip this intent if it's been processed (executed)
-        if (isProcessed) {
-          console.log(`Skipping processed intent ${intentId}`);
-          return null;
-        }
-        
+
         return {
-          id: intentId,
-          user: targetAddress!,
-          tokenIn: parsedEvent?.args?.tokenIn || intent.tokenIn,
-          tokenOut: parsedEvent?.args?.tokenOut || intent.tokenOut,
-          deadline: Number(intent.deadline),
-          decryptedAmount: intent.decryptedAmount > BigInt(0) ? ethers.formatUnits(intent.decryptedAmount, 6) : null,
-          executed: false, // We already filtered out executed ones
-          blockNumber: event.blockNumber,
+          id: event.transactionHash, // Use tx hash as ID
           transactionHash: event.transactionHash,
-          timestamp: (await publicProvider.getBlock(event.blockNumber))?.timestamp || 0
+          blockNumber: event.blockNumber,
+          user: targetAddress!,
+          tokenIn: parsedEvent?.args?.tokenIn || '',
+          tokenOut: parsedEvent?.args?.tokenOut || '',
+          batchId: batchId,
+          batchStatus: batchStatus,
+          deadline: 0,
+          decryptedAmount: null,
+          executed: false,
+          timestamp: 0
         };
       }));
       

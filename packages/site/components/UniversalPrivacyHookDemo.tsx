@@ -107,12 +107,15 @@ export function UniversalPrivacyHookDemo() {
   
   const [submittedIntents, setSubmittedIntents] = useState<Array<{
     id: string;
+    transactionHash: string;
     status: 'pending' | 'decrypted' | 'executed';
     amount?: string;
     tokenIn: string;
     tokenOut: string;
     timestamp: number;
     blockNumber?: number;
+    batchId?: string | null;
+    batchStatus?: string;
   }>>([]);
   const [isLoadingIntents, setIsLoadingIntents] = useState(false);
   const [processedIntents, setProcessedIntents] = useState<Set<string>>(new Set());
@@ -195,14 +198,14 @@ export function UniversalPrivacyHookDemo() {
           .filter(intent => !processedIntents.has(intent.id))
           .map(intent => ({
             id: intent.id,
-            status: intent.executed ? 'executed' as const : 
-                    intent.decryptedAmount ? 'decrypted' as const : 
-                    'pending' as const,
-            amount: intent.decryptedAmount || undefined,
+            transactionHash: intent.transactionHash,
+            status: 'pending' as const,
             tokenIn: intent.tokenIn,
             tokenOut: intent.tokenOut,
             timestamp: intent.timestamp * 1000,
-            blockNumber: intent.blockNumber
+            blockNumber: intent.blockNumber,
+            batchId: intent.batchId,
+            batchStatus: intent.batchStatus
           }));
         
         setSubmittedIntents(formattedIntents);
@@ -548,18 +551,6 @@ export function UniversalPrivacyHookDemo() {
             <div className="text-2xl font-bold text-green-600">
               ${((parseFloat(balanceUSDC || '0') + parseFloat(balanceUSDT || '0')) * 1).toFixed(2)}
             </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-white/90 backdrop-blur-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Active Intents</CardTitle>
-            <div className="p-2 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-lg">
-              <Layers className="h-4 w-4 text-white" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{submittedIntents.length}</div>
           </CardContent>
         </Card>
         
@@ -960,12 +951,9 @@ export function UniversalPrivacyHookDemo() {
           ) : (
             <div className="space-y-2">
               {submittedIntents.map((intent) => (
-                <div key={intent.id} className="flex items-center justify-between p-5 bg-gradient-to-r from-orange-50 to-red-50/30 rounded-lg">
-                  <div className="space-y-2">
-                    <p className="text-lg font-mono font-medium">
-                      {intent.id.slice(0, 10)}...{intent.id.slice(-8)}
-                    </p>
-                    <div className="flex items-center gap-2 text-lg">
+                <div key={intent.id} className="flex items-center justify-between p-5 bg-gradient-to-r from-blue-50 to-indigo-50/30 rounded-lg">
+                  <div className="space-y-2 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
                       <span className="font-semibold text-blue-600">
                         {getTokenSymbol(intent.tokenIn)}
                       </span>
@@ -974,35 +962,35 @@ export function UniversalPrivacyHookDemo() {
                         {getTokenSymbol(intent.tokenOut)}
                       </span>
                     </div>
+                    <a
+                      href={`https://sepolia.etherscan.io/tx/${intent.transactionHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-mono text-blue-600 hover:text-blue-800 hover:underline block"
+                    >
+                      {intent.transactionHash.slice(0, 10)}...{intent.transactionHash.slice(-8)}
+                    </a>
+                    <p className="text-xs text-gray-400">Block: {intent.blockNumber}</p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    {intent.amount && (
-                      <span className="text-xl font-bold">{intent.amount}</span>
+                  <div className="flex flex-col items-end gap-1">
+                    {intent.batchId && intent.batchId !== '0x0000000000000000000000000000000000000000000000000000000000000000' && (
+                      <>
+                        <p className="text-xs text-gray-400 font-mono">
+                          Batch: {intent.batchId.slice(2, 5)}...{intent.batchId.slice(-3)}
+                        </p>
+                        <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                          intent.batchStatus === 'settled' ? 'bg-green-100 text-green-700' :
+                          intent.batchStatus === 'finalized' ? 'bg-blue-100 text-blue-700' :
+                          intent.batchStatus === 'processing' ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {intent.batchStatus === 'settled' ? '✓ Settled' :
+                           intent.batchStatus === 'finalized' ? '⏳ Finalized' :
+                           intent.batchStatus === 'processing' ? '⚡ Processing' :
+                           'Unknown'}
+                        </span>
+                      </>
                     )}
-                    {intent.status === 'decrypted' && (
-                      <Button
-                        onClick={() => handleExecuteIntent(intent.id)}
-                        className="h-10 px-4 text-base font-medium"
-                        variant="default"
-                        disabled={executingIntentId === intent.id}
-                      >
-                        {executingIntentId === intent.id ? (
-                          <>
-                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                            Processing...
-                          </>
-                        ) : (
-                          'Execute'
-                        )}
-                      </Button>
-                    )}
-                    <span className={`px-3 py-2 rounded-lg text-sm font-semibold ${
-                      intent.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                      intent.status === 'decrypted' ? 'bg-blue-100 text-blue-700' :
-                      'bg-green-100 text-green-700'
-                    }`}>
-                      {intent.status}
-                    </span>
                   </div>
                 </div>
               ))}
