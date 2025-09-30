@@ -280,17 +280,17 @@ const matchIntents = async (intents: Intent[], encryptedTokenMap: Map<string, st
     // Create internal transfers from matched pairs using batch encrypted amounts
     let encryptIdx = 0;
     for (const match of matchedPairs) {
-        // Transfer tokenB from userA to userB
+        // Transfer tokenA from userA to userB (userA gives tokenA, wants tokenB's opposite)
         internalTransfers.push({
             to: match.userB,
-            encToken: encryptedTokenMap.get(match.tokenB) || match.tokenB, // Use encrypted token address
+            encToken: encryptedTokenMap.get(match.tokenA) || match.tokenA, // Use encrypted token address
             encAmount: encryptedAmounts[encryptIdx++]
         });
 
-        // Transfer tokenA from userB to userA
+        // Transfer tokenB from userB to userA (userB gives tokenB, wants tokenA's opposite)
         internalTransfers.push({
             to: match.userA,
-            encToken: encryptedTokenMap.get(match.tokenA) || match.tokenA, // Use encrypted token address
+            encToken: encryptedTokenMap.get(match.tokenB) || match.tokenB, // Use encrypted token address
             encAmount: encryptedAmounts[encryptIdx++]
         });
     }
@@ -489,6 +489,18 @@ const processBatch = async (batchId: string, batchData: string) => {
         const feeData = await provider.getFeeData();
         const gasPrice = (feeData.gasPrice! * 120n) / 100n;
         console.log(`Using gas price (120% boost): ${gasPrice.toString()}`);
+
+        // Debug: log all parameters before submission
+        console.log("\n=== Settlement Parameters ===");
+        console.log("Batch ID:", decodedBatchId);
+        console.log("Internal Transfers:", internalTransfersForContract.length);
+        console.log("Net Amount In:", settlementData.netAmountIn.toString());
+        console.log("Token In:", settlementData.tokenIn);
+        console.log("Token Out:", settlementData.tokenOut);
+        console.log("Output Token:", settlementData.outputToken);
+        console.log("User Shares:", settlementData.userShares.length);
+        console.log("Input Proof length:", settlementData.inputProof.length);
+        console.log("Signatures:", [signature].length);
 
         // Submit to SwapManager.submitBatchSettlement()
         const tx = await SwapManager.submitBatchSettlement(

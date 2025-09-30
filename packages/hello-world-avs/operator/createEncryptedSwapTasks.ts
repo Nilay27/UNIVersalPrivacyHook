@@ -8,7 +8,7 @@ dotenv.config();
 
 // Setup env variables
 const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://sepolia.gateway.tenderly.co");
-const wallet = new ethers.Wallet(process.env.PRIVATE_KEY!, provider);
+const wallet = new ethers.Wallet(process.env.HELPER_WALLET_KEY!, provider);
 
 // For Sepolia
 const chainId = 11155111;
@@ -274,7 +274,7 @@ async function submitFinalizationTrigger(
         const tinyIntent: SwapIntent = {
             tokenIn: USDC_ADDRESS,
             tokenOut: USDT_ADDRESS,
-            amount: BigInt(1), // Just 1 unit to trigger
+            amount: BigInt(200), // 200 wei to avoid Uniswap minimum swap revert
             description: "Finalization trigger"
         };
 

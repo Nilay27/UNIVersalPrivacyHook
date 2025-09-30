@@ -210,17 +210,30 @@ export const batchDecryptAmounts = async (encryptedAmounts: string[]): Promise<b
         console.log(`Batch decrypting ${encryptedAmounts.length} amounts in single call...`);
 
         // Prepare all handles for batch decryption
-        const handleContractPairs = encryptedAmounts.map(encryptedAmount => {
+        const handleContractPairs = encryptedAmounts.map((encryptedAmount, index) => {
             let encryptedHandle: string;
+
+            console.log(`Processing encrypted amount ${index}:`, encryptedAmount);
 
             // Handle is already a string (uint256 as string from intent decoding)
             // Convert to hex format for FHEVM SDK, padded to 32 bytes (64 hex chars)
             if (encryptedAmount.startsWith('0x')) {
-                // Already hex - ensure it's padded to 64 chars
-                encryptedHandle = ethers.zeroPadValue(encryptedAmount, 32);
+                // Already hex - validate it's proper hex
+                try {
+                    // Remove 0x prefix, ensure even length, then re-add 0x
+                    const hexWithoutPrefix = encryptedAmount.slice(2);
+                    const paddedHex = hexWithoutPrefix.padStart(64, '0');
+                    encryptedHandle = '0x' + paddedHex;
+                    console.log(`Padded handle ${index}:`, encryptedHandle);
+                } catch (e) {
+                    console.error(`Failed to pad handle ${index}:`, e);
+                    throw e;
+                }
             } else {
                 // Convert decimal string to hex and pad to 32 bytes
-                encryptedHandle = ethers.zeroPadValue('0x' + BigInt(encryptedAmount).toString(16), 32);
+                const hexValue = BigInt(encryptedAmount).toString(16).padStart(64, '0');
+                encryptedHandle = '0x' + hexValue;
+                console.log(`Converted handle ${index}:`, encryptedHandle);
             }
 
             return {
