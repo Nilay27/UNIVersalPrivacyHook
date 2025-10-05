@@ -19,20 +19,27 @@
 
 ## 🎯 Overview
 
-**UniversalPrivacyHook** is a groundbreaking Uniswap V4 hook that enables completely private token swaps using Zama's Fully Homomorphic Encryption (FHE) technology combined with an EigenLayer AVS for batch processing. Users can swap tokens without revealing their swap amounts to anyone - not even validators or MEV bots.
+**UniversalPrivacyHook** is a groundbreaking DeFi privacy platform that combines Uniswap V4 hooks with Zama's Fully Homomorphic Encryption (FHE) and an EigenLayer AVS for two core features:
 
-### 🌟 Key Innovation
+1. **Private Batch Swaps**: Swap tokens without revealing amounts to anyone - not even validators or MEV bots
+2. **Universal Encrypted Intents (UEI)**: Execute encrypted trades on any DeFi protocol (Aave, Compound, etc.) with complete privacy
 
-This project introduces a novel approach to DeFi privacy with intelligent batching:
+### 🌟 Key Innovations
 
-- **Complete Privacy Decoupling**: Breaks the link between encrypted intent amounts and on-chain execution - only net AMM amounts are visible on-chain, while matched trades remain fully encrypted end-to-end
-- **Encrypted Swap Amounts**: All swap amounts remain encrypted throughout the entire process
-- **MEV Protection**: Front-runners cannot see or exploit your trades
-- **Batch Settlement with Intent Matching**: AVS operators decrypt and match opposite intents, reducing AMM usage up to 100% (average 45-55% reduction)
-- **Save Up to 100% of Impermanent Loss**: Users pay ZERO impermanent loss on matched trades since they never touch the AMM - only the unmatched net amount interacts with the pool
-- **Trustless Execution**: Smart contracts process encrypted data with AVS consensus
-- **User Sovereignty**: Only users can decrypt their own balances
-- **Perfect Execution**: Internal matching provides 1:1 exchange rate with zero slippage and zero impermanent loss
+#### Encrypted Swaps
+- **Complete Privacy Decoupling**: Breaks the link between encrypted intent amounts and on-chain execution - only net AMM amounts are visible on-chain
+- **Batch Settlement with Intent Matching**: AVS operators decrypt and match opposite intents, reducing AMM usage up to 100%
+- **Save Up to 100% of Impermanent Loss**: Matched trades never touch the AMM - only unmatched amounts interact with the pool
+- **Perfect Execution**: Internal matching provides 1:1 exchange rate with zero slippage and zero IL
+
+#### Universal Encrypted Intents (UEI) - NEW! 🚀
+- **Fully Encrypted Trades**: Trade destination, protocol, function, and amounts all remain encrypted
+- **Multi-Protocol Support**: Submit trades to Aave, Compound, or any DeFi protocol privately
+- **Batch Aggregation**: Similar trades batched together (e.g., 2x Aave supply → 1 batched transaction)
+- **Gas Savings**: ~50% gas reduction through batching
+- **All Args as euint256**: Novel approach where all function arguments (addresses, amounts, bools) are encrypted as `euint256`
+- **Operator Decoder Config**: Off-chain configs interpret encrypted values based on protocol and function
+- **SwapManager Entry Point**: Direct submission to AVS (keeps Hook under 24KB size limit)
 
 ## 🏗️ Technical Architecture
 
@@ -75,7 +82,7 @@ This project introduces a novel approach to DeFi privacy with intelligent batchi
                         └──────────────────────┘
 ```
 
-### Detailed Sequence Diagram - Complete Batch Flow
+### Detailed Sequence Diagram - Encrypted Swap Batch Flow
 
 ```mermaid
 %%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#03dac6', 'primaryTextColor':'#fff', 'primaryBorderColor':'#00a896', 'lineColor':'#03dac6', 'secondaryColor':'#bb86fc', 'tertiaryColor':'#3700b3', 'background':'#121212', 'mainBkg':'#1f1f1f', 'secondBkg':'#2d2d2d', 'tertiaryBkg':'#3d3d3d', 'textColor':'#ffffff', 'labelBackground':'#2d2d2d', 'labelTextColor':'#ffffff', 'actorBkg':'#424242', 'actorBorder':'#03dac6', 'actorTextColor':'#fff', 'signalColor':'#03dac6', 'signalTextColor':'#fff'}}}%%
@@ -148,6 +155,92 @@ sequenceDiagram
     end
 ```
 
+### UEI (Universal Encrypted Intent) Sequence Diagram
+
+```mermaid
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#ff6b6b', 'primaryTextColor':'#fff', 'primaryBorderColor':'#ee5a6f', 'lineColor':'#ff6b6b', 'secondaryColor':'#4ecdc4', 'tertiaryColor':'#45b7d1', 'background':'#121212', 'mainBkg':'#1f1f1f', 'secondBkg':'#2d2d2d', 'tertiaryBkg':'#3d3d3d', 'textColor':'#ffffff', 'labelBackground':'#2d2d2d', 'labelTextColor':'#ffffff', 'actorBkg':'#424242', 'actorBorder':'#ff6b6b', 'actorTextColor':'#fff', 'signalColor':'#ff6b6b', 'signalTextColor':'#fff'}}}%%
+sequenceDiagram
+    participant User as User Wallet
+    participant ZAMA as ZAMA FHEVM<br/>(Client-side)
+    participant SwapManager as SwapManager AVS<br/>(Entry Point)
+    participant AVS as AVS Operators<br/>(Decrypt & Batch)
+    participant Vault as BoringVault<br/>(Pre-funded)
+    participant DeFi as DeFi Protocols<br/>(Aave, Compound, etc.)
+
+    rect rgb(80, 30, 60)
+        Note over User,SwapManager: PHASE 1: Encrypted Trade Submission
+        User->>ZAMA: Encrypt trade details locally<br/>• decoder: address (sanitizer)<br/>• target: address (Aave/Compound)<br/>• selector: bytes4 (function)<br/>• args: uint256[] (ALL as uint256)
+        Note over ZAMA: createEncryptedInput(<br/>  SwapManager, userAddress<br/>)
+        ZAMA-->>User: handles[] + inputProof
+
+        User->>SwapManager: submitEncryptedTrade(<br/>  encryptedBlob, inputProof, deadline<br/>)
+        Note over SwapManager: msg.sender = User ✓
+
+        SwapManager->>SwapManager: FHE.fromExternal() all components:<br/>• eaddress decoder<br/>• eaddress target<br/>• euint32 selector<br/>• euint256[] args
+        SwapManager->>SwapManager: Store as TradeTask (internal euints)
+        SwapManager->>SwapManager: Add to current batch (5 blocks)
+
+        SwapManager-->>User: emit TradeSubmitted(tradeId, user, batchId)
+    end
+
+    rect rgb(40, 70, 50)
+        Note over SwapManager,AVS: PHASE 2: Batch Finalization (After 5 Blocks)
+
+        SwapManager->>SwapManager: Auto-finalize batch
+        SwapManager->>SwapManager: Select operators deterministically
+        SwapManager->>SwapManager: Grant FHE.allow() to operators:<br/>• decoder, target, selector<br/>• ALL args[]
+
+        SwapManager-->>AVS: emit TradeBatchFinalized(<br/>  batchId, tradeIds[], operators[]<br/>)
+    end
+
+    rect rgb(50, 40, 80)
+        Note over AVS,SwapManager: PHASE 3: Off-chain Processing
+
+        AVS->>SwapManager: Monitor TradeBatchFinalized event
+        AVS->>SwapManager: Fetch trade tasks from storage
+        Note over AVS: Collect handles:<br/>• decoderHandle (bytes32)<br/>• targetHandle (bytes32)<br/>• selectorHandle (bytes32)<br/>• argHandles[] (bytes32[])
+
+        AVS->>ZAMA: Batch decrypt ALL handles
+        Note over ZAMA: All handles are bytes32<br/>SDK returns uint256 values
+        ZAMA-->>AVS: Decrypted values[]
+
+        AVS->>AVS: Parse values using decoder config:<br/>decoder → 0xAave...<br/>target → 0xAavePool...<br/>selector → 0x617ba037 (supply)<br/>args → [asset, amount, onBehalfOf, code]
+
+        AVS->>AVS: Batch similar trades:<br/>U1: Aave.supply(USDT, 500, ...)<br/>U2: Aave.supply(USDT, 700, ...)<br/>→ Batched: Aave.supply(USDT, 1200, ...)
+
+        AVS->>AVS: Construct batched calldata<br/>Aggregate amounts (500+700=1200)
+        AVS->>AVS: Sign consensus message
+    end
+
+    rect rgb(70, 50, 40)
+        Note over AVS,DeFi: PHASE 4: Execution via BoringVault
+
+        AVS->>SwapManager: processTradeBatch(<br/>  batchId, decoder, target,<br/>  batchedCalldata, amounts[], sigs[]<br/>)
+
+        SwapManager->>SwapManager: Verify operator consensus
+        Note over SwapManager: Check signatures from<br/>selected operators
+
+        SwapManager->>Vault: execute(target, calldata, 0)
+        Note over Vault: Assume pre-funded<br/>(Future: Hook integration)
+
+        Vault->>DeFi: Execute batched trade<br/>Aave.supply(USDT, 1200, vault, 0)
+        DeFi-->>Vault: Returns 1200 aUSDT
+        Vault-->>SwapManager: Execution result
+
+        SwapManager->>SwapManager: Mark batch as executed
+        SwapManager-->>AVS: emit TradeBatchExecuted(<br/>  batchId, target, 1200, result<br/>)
+    end
+
+    rect rgb(30, 80, 60)
+        Note over User,DeFi: RESULT (MVP - Event Only)
+        Note over SwapManager: Users monitor events<br/>Future: Encrypted result distribution
+    end
+
+    rect rgb(80, 40, 70)
+        Note over User,DeFi: KEY FEATURES:<br/>✅ Trade destination fully encrypted<br/>✅ Trade amounts fully encrypted<br/>✅ Batching reduces gas ~50%<br/>✅ SwapManager is entry point (Hook size limit)<br/>✅ All args as euint256 (no dynamic types)<br/>✅ Decoder config interprets args off-chain
+    end
+```
+
 ### Core Technologies
 
 1. **FHEVM (Fully Homomorphic Encryption Virtual Machine)**
@@ -155,19 +248,21 @@ sequenceDiagram
    - Maintains privacy throughout transaction lifecycle
    - Integrates seamlessly with EVM
    - Batch decryption via FHE Gateway for AVS operators
+   - **UEI Innovation**: All args encrypted as `euint256` (no dynamic type casting)
 
 2. **EigenLayer AVS (Actively Validated Service)**
-   - Decentralized operator network for batch processing
+   - **Swaps**: Decentralized operator network for batch processing and intent matching
+   - **UEI**: Direct entry point for encrypted trade submissions
    - Consensus-based settlement verification
-   - Intent matching and netting algorithm
-   - Reduces on-chain AMM usage by 45-100% (depending on intent matching rate)
-   - Matched trades are pure internal transfers - zero impermanent loss
+   - Reduces on-chain operations by 45-100%
+   - Operator decoder configs for interpreting encrypted UEI args
 
 3. **Uniswap V4 Hooks**
    - Custom logic at key pool lifecycle points
    - Enables encrypted token management
    - Handles private swap intents
    - Batch settlement integration
+   - Under 24KB size limit (UEI moved to SwapManager)
 
 4. **Hybrid Encrypted Tokens**
    - ERC20-compatible tokens with encrypted balances
@@ -175,26 +270,42 @@ sequenceDiagram
    - Automatic conversion between regular and encrypted tokens
    - Efficient burn/mint for internal matching
 
+5. **BoringVault (UEI Execution)**
+   - Pre-funded vault for executing DeFi interactions
+   - Supports multi-protocol trades (Aave, Compound, etc.)
+   - Future: Auto-funded via Hook's `beforeAddLiquidity` (90% routing)
+
 ## ✨ Features
 
-### For Users
+### For Users - Encrypted Swaps
 - 🔐 **Complete Privacy**: Swap amounts remain encrypted end-to-end - matched trades NEVER appear on-chain
-- 🔓 **Privacy Decoupling**: Your encrypted intent amount is completely decoupled from on-chain execution - only the net aggregated amount hits the chain unencrypted
+- 🔓 **Privacy Decoupling**: Your encrypted intent amount is completely decoupled from on-chain execution
 - 🛡️ **MEV Protection**: Immune to sandwich attacks via batch aggregation
 - 💰 **Token Faucet**: Easy testing with mock USDC/USDT
 - 📊 **Balance Management**: View and decrypt your encrypted balances
 - 🔄 **Intent-Based Swaps**: Submit swap intents that execute asynchronously
-- 💎 **Save Up to 100% of Impermanent Loss**: Pay ZERO impermanent loss on matched trades - only unmatched amounts touch the AMM
-- 🎯 **Perfect Pricing**: Internal matching provides 1:1 exchange rate with zero slippage and zero IL
+- 💎 **Save Up to 100% of Impermanent Loss**: Pay ZERO IL on matched trades
+- 🎯 **Perfect Pricing**: Internal matching provides 1:1 exchange rate with zero slippage
 - ⚡ **AMM Usage Reduction**: Up to 100% reduction when trades are perfectly matched
+
+### For Users - UEI (Universal Encrypted Intents) 🆕
+- 🎭 **Fully Private Trades**: Trade destination, protocol, and amounts all encrypted
+- 🏦 **Multi-Protocol**: Support for Aave, Compound, and any DeFi protocol
+- 📦 **Batch Benefits**: Similar trades aggregated for ~50% gas savings
+- 🔒 **End-to-End Encryption**: Only selected AVS operators can decrypt
+- 🎯 **Simple Submission**: One function call to submit any encrypted trade
+- ⚙️ **Flexible Arguments**: All function args supported via `euint256` encoding
 
 ### For Developers
 - 📝 **Extensive FHEVM Integration**: Full implementation of FHE operations
 - 🎣 **Custom Hook Implementation**: Complete Uniswap V4 hook with batch settlement
 - 🌐 **Frontend SDK Integration**: Uses `@zama-fhe/relayer-sdk` for client-side encryption
 - 🧪 **Comprehensive Testing**: Full test suite with hardhat tasks
-- 🔗 **AVS Integration**: EigenLayer operator network for decentralized batch processing
+- 🔗 **AVS Integration**: EigenLayer operator network for decentralized processing
 - 🧮 **Intent Matching Algorithm**: Off-chain netting reduces AMM dependency
+- 🔧 **UEI Architecture**: Novel `euint256`-only approach for dynamic arg support
+- 📚 **Decoder Configs**: Extensible off-chain protocol interpretation system
+- 🗂️ **Complete Documentation**: See [UEI_ARCHITECTURE.md](./UEI_ARCHITECTURE.md) for full technical spec
 
 ## 🚀 Quick Start
 
