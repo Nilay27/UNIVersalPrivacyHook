@@ -55,15 +55,23 @@ interface ISwapManager {
         Expired
     }
 
-    // UEI task structure
+    // UEI task structure (minimal storage - ctBlob emitted in events only)
     struct UEITask {
         bytes32 intentId;
         address submitter;
-        bytes ctBlob;  // Contains encrypted decoder, target, selector, args
+        bytes32 batchId;         // Which batch this trade belongs to
         uint256 deadline;
-        uint256 blockSubmitted;
-        address[] selectedOperators;
         UEIStatus status;
+    }
+
+    // Trade batch structure for batching similar trades
+    struct TradeBatch {
+        bytes32[] intentIds;     // Trade IDs in this batch
+        uint256 createdBlock;    // Block when batch created
+        uint256 finalizedBlock;  // Block when finalized
+        bool finalized;          // Whether finalized
+        bool executed;           // Whether executed
+        address[] selectedOperators; // Operators for this batch
     }
 
     // UEI execution record
@@ -79,21 +87,18 @@ interface ISwapManager {
     }
 
     // UEI events
-    event UEISubmitted(
-        bytes32 indexed intentId,
+    event TradeSubmitted(
+        bytes32 indexed tradeId,
         address indexed submitter,
-        bytes ctBlob,
-        uint256 deadline,
-        address[] selectedOperators
+        bytes32 indexed batchId,
+        bytes ctBlob,           // Operators decode this off-chain
+        uint256 deadline
     );
 
-    event UEISubmittedWithProof(
-        bytes32 indexed intentId,
-        address indexed submitter,
-        bytes ctBlob,
-        bytes inputProof,
-        uint256 deadline,
-        address[] selectedOperators
+    event UEIBatchFinalized(
+        bytes32 indexed batchId,
+        address[] selectedOperators,
+        uint256 finalizedAt
     );
 
     event UEIProcessed(
@@ -105,16 +110,13 @@ interface ISwapManager {
     event BoringVaultSet(address indexed vault);
 
     // UEI functions
-    function submitUEI(
-        bytes calldata ctBlob,
-        uint256 deadline
-    ) external returns (bytes32 intentId);
-
-    function submitUEIWithProof(
+    function submitEncryptedUEI(
         bytes calldata ctBlob,
         bytes calldata inputProof,
         uint256 deadline
     ) external returns (bytes32 intentId);
+
+    function finalizeUEIBatch() external;
 
     function processUEI(
         bytes32 intentId,
@@ -129,4 +131,5 @@ interface ISwapManager {
     // UEI view functions
     function getUEITask(bytes32 intentId) external view returns (UEITask memory);
     function getUEIExecution(bytes32 intentId) external view returns (UEIExecution memory);
+    function getTradeBatch(bytes32 batchId) external view returns (TradeBatch memory);
 }

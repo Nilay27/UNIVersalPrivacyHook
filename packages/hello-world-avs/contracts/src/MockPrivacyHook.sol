@@ -107,8 +107,8 @@ contract MockPrivacyHook {
             ctArgs
         );
 
-        // Submit to SwapManager AVS
-        intentId = swapManager.submitUEI(ctBlob, deadline);
+        // Submit to SwapManager AVS (using empty proof for mock/testing)
+        intentId = swapManager.submitEncryptedUEI(ctBlob, "", deadline);
 
         emit UEISubmitted(intentId, msg.sender, ctBlob);
 
@@ -125,8 +125,8 @@ contract MockPrivacyHook {
         bytes calldata ctBlob,
         uint256 deadline
     ) external returns (bytes32 intentId) {
-        // Submit directly to SwapManager AVS
-        intentId = swapManager.submitUEI(ctBlob, deadline);
+        // Submit directly to SwapManager AVS (using empty proof for mock/testing)
+        intentId = swapManager.submitEncryptedUEI(ctBlob, "", deadline);
 
         emit UEISubmitted(intentId, msg.sender, ctBlob);
 
@@ -141,7 +141,7 @@ contract MockPrivacyHook {
         bytes calldata inputProof,
         uint256 deadline
     ) external returns (bytes32 intentId) {
-        intentId = swapManager.submitUEIWithProof(ctBlob, inputProof, deadline);
+        intentId = swapManager.submitEncryptedUEI(ctBlob, inputProof, deadline);
 
         emit UEISubmittedWithProof(intentId, msg.sender, ctBlob, inputProof);
 

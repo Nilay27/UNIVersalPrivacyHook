@@ -90,6 +90,24 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
     mapping(bytes32 => UEITask) public ueiTasks;
     mapping(bytes32 => UEIExecution) public ueiExecutions;
 
+    // Store FHE handles for operator permission grants (not exposed publicly)
+    struct FHEHandles {
+        eaddress decoder;
+        eaddress target;
+        euint32 selector;
+        euint256[] args;
+    }
+    mapping(bytes32 => FHEHandles) internal ueiHandles;
+
+    // Trade batch management (keeper-triggered batching)
+    // NOTE: Off-chain keeper bot should call finalizeUEIBatch() every few minutes
+    // or whenever idle time exceeds MAX_BATCH_IDLE to seal batches and grant decrypt permissions
+    uint256 public constant MAX_BATCH_IDLE = 10 minutes;
+    uint256 public lastTradeBatchExecutionTime;
+    uint256 public currentBatchCounter; // Incremental batch counter
+    mapping(uint256 => bytes32) public batchCounterToBatchId; // Counter -> BatchId mapping
+    mapping(bytes32 => TradeBatch) public tradeBatches; // BatchId -> Batch data
+
     // SimpleBoringVault for executing trades
     address payable public boringVault;
 
@@ -391,129 +409,171 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
      */
 
     /**
-     * @notice Submit a Universal Encrypted Intent for trade execution
-     * @param ctBlob Encrypted blob containing decoder, target, selector, and arguments
-     * @param deadline Expiration timestamp for the intent
-     * @return intentId Unique identifier for the submitted intent
-     */
-    function submitUEI(
-        bytes calldata ctBlob,
-        uint256 deadline
-    ) external onlyAuthorizedHook returns (bytes32 intentId) {
-        // Generate unique intent ID
-        intentId = keccak256(abi.encode(msg.sender, ctBlob, deadline, block.number));
-
-        // Select operators for this UEI (reuse batch selection logic)
-        address[] memory selectedOps = new address[](COMMITTEE_SIZE);
-        uint256 seed = uint256(intentId);
-
-        for (uint256 i = 0; i < COMMITTEE_SIZE && i < registeredOperators.length; i++) {
-            uint256 index = (seed + i) % registeredOperators.length;
-            selectedOps[i] = registeredOperators[index];
-        }
-
-        // Create UEI task
-        UEITask memory task = UEITask({
-            intentId: intentId,
-            submitter: msg.sender,
-            ctBlob: ctBlob,
-            deadline: deadline,
-            blockSubmitted: block.number,
-            selectedOperators: selectedOps,
-            status: UEIStatus.Pending
-        });
-
-        // Store the task
-        ueiTasks[intentId] = task;
-
-        emit UEISubmitted(intentId, msg.sender, ctBlob, deadline, selectedOps);
-        return intentId;
-    }
-
-    /**
-     * @notice Submit a Universal Encrypted Intent with input proof for FHE permissions
+     * @notice Submit a Universal Encrypted Intent (UEI) with batching
      * @param ctBlob Encrypted blob containing decoder, target, selector, and arguments
      * @param inputProof Input proof for FHE decryption permissions
      * @param deadline Expiration timestamp for the intent
-     * @return intentId Unique identifier for the submitted intent
+     * @return ueiId Unique identifier for the submitted UEI
      */
-    function submitUEIWithProof(
+    function submitEncryptedUEI(
         bytes calldata ctBlob,
         bytes calldata inputProof,
         uint256 deadline
-    ) external onlyAuthorizedHook returns (bytes32 intentId) {
-        // Generate unique intent ID
-        intentId = keccak256(abi.encode(msg.sender, ctBlob, inputProof, deadline, block.number));
+    ) external returns (bytes32 ueiId) {
+        // Generate unique UEI ID
+        ueiId = keccak256(abi.encode(msg.sender, ctBlob, deadline, block.number));
 
-        // Select operators for this UEI
-        address[] memory selectedOps = new address[](COMMITTEE_SIZE);
-        uint256 seed = uint256(intentId);
+        // Get or create current UEI batch (keeper-triggered rolling batch)
+        bytes32 batchId = batchCounterToBatchId[currentBatchCounter];
+        TradeBatch storage batch = tradeBatches[batchId];
 
-        for (uint256 i = 0; i < COMMITTEE_SIZE && i < registeredOperators.length; i++) {
-            uint256 index = (seed + i) % registeredOperators.length;
-            selectedOps[i] = registeredOperators[index];
+        // Create new batch if none exists
+        if (batchId == bytes32(0)) {
+            currentBatchCounter++; // Increment counter for new batch
+            batchId = keccak256(abi.encode("UEI_BATCH", currentBatchCounter, block.number, block.timestamp));
+            batchCounterToBatchId[currentBatchCounter] = batchId;
+            tradeBatches[batchId] = TradeBatch({
+                intentIds: new bytes32[](0),
+                createdBlock: block.number,
+                finalizedBlock: 0,
+                finalized: false,
+                executed: false,
+                selectedOperators: new address[](0)
+            });
+            batch = tradeBatches[batchId];
         }
 
-        // Decode the blob to extract encrypted handles and grant FHE permissions
-        _grantFHEPermissions(ctBlob, inputProof, selectedOps);
+        // Grant FHE permissions and store handles for later operator access
+        _grantFHEPermissions(ueiId, ctBlob, inputProof);
 
-        // Create UEI task
-        UEITask memory task = UEITask({
-            intentId: intentId,
+        // Create minimal UEI task (no ctBlob storage - emitted in event!)
+        ueiTasks[ueiId] = UEITask({
+            intentId: ueiId,
             submitter: msg.sender,
-            ctBlob: ctBlob,
+            batchId: batchId,
             deadline: deadline,
-            blockSubmitted: block.number,
-            selectedOperators: selectedOps,
             status: UEIStatus.Pending
         });
 
-        // Store the task
-        ueiTasks[intentId] = task;
+        // Add to current batch
+        batch.intentIds.push(ueiId);
 
-        emit UEISubmittedWithProof(intentId, msg.sender, ctBlob, inputProof, deadline, selectedOps);
-        return intentId;
+        // Emit event with ctBlob (operators decode from event, not storage!)
+        emit TradeSubmitted(ueiId, msg.sender, batchId, ctBlob, deadline);
+
+        return ueiId;
     }
 
     /**
-     * @notice Grant FHE permissions to selected operators for encrypted UEI components
+     * @notice Verify and internalize FHE handles from ctBlob
+     * @dev Validates inputProof and stores handles for later operator permission grants
+     * @param ueiId The UEI identifier to map handles to
      * @param ctBlob The encrypted blob containing FHE handles
      * @param inputProof The input proof for FHE operations
-     * @param selectedOperators The operators to grant permissions to
      */
     function _grantFHEPermissions(
+        bytes32 ueiId,
         bytes calldata ctBlob,
-        bytes calldata inputProof,
-        address[] memory selectedOperators
+        bytes calldata inputProof
     ) internal {
-            // Decode the blob to extract encrypted handles
-            (
-                bytes32 encDecoder,    // eaddress handle
-                bytes32 encTarget,     // eaddress handle  
-                bytes32 encSelector,   // euint32 handle
-                uint8[] memory argTypes, // unencrypted
-                bytes32[] memory encArgs // euint256 handles
-            ) = abi.decode(ctBlob, (bytes32, bytes32, bytes32, uint8[], bytes32[]));
+        // Decode the blob to extract encrypted handles (NO argTypes - all uint256!)
+        (
+            bytes32 encDecoder,      // eaddress handle
+            bytes32 encTarget,       // eaddress handle
+            bytes32 encSelector,     // euint32 handle
+            bytes32[] memory encArgs // ALL args as euint256 handles
+        ) = abi.decode(ctBlob, (bytes32, bytes32, bytes32, bytes32[]));
 
-            // Convert handles to FHE types and grant permissions
-            eaddress decoder = FHE.fromExternal(externalEaddress.wrap(encDecoder), inputProof);
-            eaddress target = FHE.fromExternal(externalEaddress.wrap(encTarget), inputProof);
-            euint32 selector = FHE.fromExternal(externalEuint32.wrap(encSelector), inputProof);
+        // Convert handles to internal FHE types (validates inputProof)
+        eaddress decoder = FHE.fromExternal(externalEaddress.wrap(encDecoder), inputProof);
+        eaddress target = FHE.fromExternal(externalEaddress.wrap(encTarget), inputProof);
+        euint32 selector = FHE.fromExternal(externalEuint32.wrap(encSelector), inputProof);
 
-            // Grant permissions to all selected operators
-            for (uint256 i = 0; i < selectedOperators.length; i++) {
-                address operator = selectedOperators[i];
-                
-                FHE.allow(decoder, operator);
-                FHE.allow(target, operator);
-                FHE.allow(selector, operator);
-                
-                // Grant permissions for all encrypted arguments
-                for (uint256 j = 0; j < encArgs.length; j++) {
-                    euint256 arg = FHE.fromExternal(externalEuint256.wrap(encArgs[j]), inputProof);
-                    FHE.allow(arg, operator);
+        // Convert all arguments and store
+        euint256[] memory args = new euint256[](encArgs.length);
+        for (uint256 i = 0; i < encArgs.length; i++) {
+            args[i] = FHE.fromExternal(externalEuint256.wrap(encArgs[i]), inputProof);
+            FHE.allowThis(args[i]);  // Grant permission to this contract
+        }
+
+        // Grant to this contract
+        FHE.allowThis(decoder);
+        FHE.allowThis(target);
+        FHE.allowThis(selector);
+
+        // Store handles for operator permission grants during finalization
+        ueiHandles[ueiId] = FHEHandles({
+            decoder: decoder,
+            target: target,
+            selector: selector,
+            args: args
+        });
+    }
+
+    /**
+     * @notice Finalize the current open UEI batch and grant decrypt permissions to operators
+     * @dev Can be called by keeper bot every few minutes, or by admin manually
+     *      Automatically creates a new batch after finalization for rolling batches
+     */
+    function finalizeUEIBatch() external {
+        // Fetch current open batch using counter
+        bytes32 batchId = batchCounterToBatchId[currentBatchCounter];
+        require(batchId != bytes32(0), "No active batch");
+
+        TradeBatch storage batch = tradeBatches[batchId];
+        require(!batch.finalized, "Batch already finalized");
+        require(batch.intentIds.length > 0, "Batch is empty");
+
+        // Require either timeout passed or admin override
+        require(
+            block.timestamp >= batch.createdBlock + MAX_BATCH_IDLE || msg.sender == admin,
+            "Batch not ready for finalization"
+        );
+
+        // Mark as finalized
+        batch.finalized = true;
+        batch.finalizedBlock = block.number;
+
+        // Select operators using existing deterministic selection
+        address[] memory selectedOps = _selectOperatorsForBatch(batchId);
+        batch.selectedOperators = selectedOps;
+
+        // Grant decrypt permissions to selected operators for all UEIs in this batch
+        for (uint256 i = 0; i < batch.intentIds.length; i++) {
+            bytes32 intentId = batch.intentIds[i];
+            FHEHandles storage handles = ueiHandles[intentId];
+
+            // Grant permissions to each selected operator (similar to swap batch)
+            for (uint256 j = 0; j < selectedOps.length; j++) {
+                FHE.allow(handles.decoder, selectedOps[j]);
+                FHE.allow(handles.target, selectedOps[j]);
+                FHE.allow(handles.selector, selectedOps[j]);
+
+                // Grant for all arguments
+                for (uint256 k = 0; k < handles.args.length; k++) {
+                    FHE.allow(handles.args[k], selectedOps[j]);
                 }
             }
+        }
+
+        // Emit finalization event
+        emit UEIBatchFinalized(batchId, selectedOps, block.timestamp);
+
+        // Update telemetry
+        lastTradeBatchExecutionTime = block.timestamp;
+
+        // Create new batch immediately for rolling batch system
+        currentBatchCounter++; // Increment to next batch
+        bytes32 newBatchId = keccak256(abi.encode("UEI_BATCH", currentBatchCounter, block.number, block.timestamp));
+        batchCounterToBatchId[currentBatchCounter] = newBatchId;
+        tradeBatches[newBatchId] = TradeBatch({
+            intentIds: new bytes32[](0),
+            createdBlock: block.number,
+            finalizedBlock: 0,
+            finalized: false,
+            executed: false,
+            selectedOperators: new address[](0)
+        });
     }
 
     /**
@@ -537,26 +597,31 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
         require(task.status == UEIStatus.Pending, "UEI not pending");
         require(block.timestamp <= task.deadline, "UEI expired");
 
-        // Verify operator is selected for this task
+        // Get the batch and selected operators
+        TradeBatch storage batch = tradeBatches[task.batchId];
+        require(batch.finalized, "Batch not finalized");
+        address[] memory selectedOps = batch.selectedOperators;
+
+        // Verify operator is selected for this batch
         bool isSelected = false;
-        for (uint256 i = 0; i < task.selectedOperators.length; i++) {
-            if (task.selectedOperators[i] == msg.sender) {
+        for (uint256 i = 0; i < selectedOps.length; i++) {
+            if (selectedOps[i] == msg.sender) {
                 isSelected = true;
                 break;
             }
         }
-        require(isSelected, "Operator not selected for this UEI");
+        require(isSelected, "Operator not selected for this batch");
 
         // Verify consensus signatures
         uint256 validSignatures = 0;
         bytes32 dataHash = keccak256(abi.encode(intentId, decoder, target, reconstructedData));
 
-        for (uint256 i = 0; i < operatorSignatures.length && i < task.selectedOperators.length; i++) {
+        for (uint256 i = 0; i < operatorSignatures.length && i < selectedOps.length; i++) {
             address signer = dataHash.toEthSignedMessageHash().recover(operatorSignatures[i]);
 
             // Check if signer is a selected operator
-            for (uint256 j = 0; j < task.selectedOperators.length; j++) {
-                if (task.selectedOperators[j] == signer) {
+            for (uint256 j = 0; j < selectedOps.length; j++) {
+                if (selectedOps[j] == signer) {
                     validSignatures++;
                     break;
                 }
@@ -630,5 +695,14 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
      */
     function getUEIExecution(bytes32 intentId) external view returns (UEIExecution memory) {
         return ueiExecutions[intentId];
+    }
+
+    /**
+     * @notice Get trade batch details
+     * @param batchId The ID of the batch
+     * @return The TradeBatch struct
+     */
+    function getTradeBatch(bytes32 batchId) external view returns (TradeBatch memory) {
+        return tradeBatches[batchId];
     }
 }

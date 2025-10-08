@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {SwapManager} from "../src/SwapManager.sol";
 import {ISwapManager} from "../src/ISwapManager.sol";
 import {MockPrivacyHook} from "../src/MockPrivacyHook.sol";
+import {FheType} from "@fhevm/solidity/lib/FheType.sol";
 
 // Import the interface to access the structs
 interface IUniversalPrivacyHookTypes {
@@ -21,9 +22,37 @@ interface IUniversalPrivacyHookTypes {
     }
 }
 
+// Mock FHE Coprocessor that always returns success
+contract MockFHECoprocessor {
+    // verifyCiphertext returns the input handle as verified handle
+    function verifyCiphertext(
+        bytes32 inputHandle,
+        address,
+        bytes memory,
+        FheType
+    ) external pure returns (bytes32) {
+        // Return the same handle as "verified"
+        return inputHandle;
+    }
+}
+
+// Mock ACL contract for FHE permissions
+contract MockACL {
+    // allowTransient does nothing (just succeeds)
+    function allowTransient(bytes32, address) external pure {}
+
+    // allow does nothing (just succeeds)
+    function allow(bytes32, address) external pure {}
+
+    // allowThis does nothing (just succeeds)
+    function allowThis(bytes32) external pure {}
+}
+
 contract SwapManagerBatchTest is Test {
     SwapManager public swapManager;
     MockPrivacyHook public mockHook;
+    MockFHECoprocessor public mockCoprocessor;
+    MockACL public mockACL;
 
     address owner = address(0x1);
     // Use vm.addr to get actual addresses from private keys
@@ -35,13 +64,20 @@ contract SwapManagerBatchTest is Test {
     address tokenB = address(0x11);
 
     function setUp() public {
-        // Mock FHE precompile addresses to prevent "call to non-contract" errors
-        // Deploy mock bytecode at common FHE-related addresses
+        // Mock other FHE precompile addresses first
         vm.etch(address(0x000000000000000000000000000000000000005d), hex"00");
-        vm.etch(address(0x687820221192C5B662b25367F70076A37bc79b6c), hex"00");  // The failing address
-        vm.etch(address(0x848B0066793BcC60346Da1F49049357399B8D595), hex"00");  // Coprocessor
 
-        // Deploy SwapManager with mock addresses
+        // Deploy mock FHE contracts
+        mockCoprocessor = new MockFHECoprocessor();
+        mockACL = new MockACL();
+
+        // Etch the mock coprocessor at the FHE coprocessor address
+        vm.etch(address(0x848B0066793BcC60346Da1F49049357399B8D595), address(mockCoprocessor).code);
+
+        // Etch the mock ACL at the ACL address
+        vm.etch(address(0x687820221192C5B662b25367F70076A37bc79b6c), address(mockACL).code);
+
+        // Deploy SwapManager AFTER etching mocks
         // Note: Constructor sets admin, no need for initialize() in tests
         swapManager = new SwapManager(
             address(0x100), // avsDirectory
@@ -350,54 +386,52 @@ contract SwapManagerBatchTest is Test {
             bytes32(uint256(1)), // encDecoder
             bytes32(uint256(2)), // encTarget
             bytes32(uint256(3)), // encSelector
-            new uint8[](0),      // argTypes
-            new bytes32[](0)     // encArgs
+            new bytes32[](0)     // encArgs (all as euint256)
         );
         uint256 deadline = block.timestamp + 1 hours;
 
-        vm.prank(address(mockHook));
-        bytes32 intentId = swapManager.submitUEI(ctBlob, deadline);
+        // Users submit directly (not hooks)
+        vm.prank(user1);
+        bytes32 intentId = swapManager.submitEncryptedUEI(ctBlob, "", deadline);
 
         // Verify intent was created
         assertTrue(intentId != bytes32(0));
 
         // Get the task
         ISwapManager.UEITask memory task = swapManager.getUEITask(intentId);
-        assertEq(task.submitter, address(mockHook));
+        assertEq(task.submitter, user1);
         assertEq(task.deadline, deadline);
         assertEq(uint(task.status), uint(ISwapManager.UEIStatus.Pending));
     }
 
-    function testSubmitUEIRevertsIfNotAuthorizedHook() public {
-        bytes memory ctBlob = "";
-        uint256 deadline = block.timestamp + 1 hours;
-
-        vm.prank(user1); // Not authorized
-        vm.expectRevert("Unauthorized hook");
-        swapManager.submitUEI(ctBlob, deadline);
-    }
+    // Test removed - submitEncryptedUEI is now public (users submit directly, not hooks)
+    // Anyone can submit UEI, no authorization check needed
 
     // testSubmitUEIWithProof skipped - requires FHE.fromExternal which needs proper FHE setup
     // This would require deploying the full FHE precompile contracts
     // Covered by integration tests in operator package
 
     function testProcessUEI() public {
-        // First submit a UEI
+        // First submit a UEI (user submits directly)
         bytes memory ctBlob = abi.encode(
             bytes32(uint256(1)),
             bytes32(uint256(2)),
             bytes32(uint256(3)),
-            new uint8[](0),
-            new bytes32[](0)
+            new bytes32[](0)  // encArgs (all as euint256)
         );
         uint256 deadline = block.timestamp + 1 hours;
 
-        vm.prank(address(mockHook));
-        bytes32 intentId = swapManager.submitUEI(ctBlob, deadline);
+        vm.prank(user1);
+        bytes32 intentId = swapManager.submitEncryptedUEI(ctBlob, "", deadline);
 
-        // Get selected operators
+        // Finalize the batch first to select operators
+        vm.warp(block.timestamp + 11 minutes); // Past MAX_BATCH_IDLE
+        swapManager.finalizeUEIBatch();
+
+        // Get selected operators from the batch
         ISwapManager.UEITask memory task = swapManager.getUEITask(intentId);
-        address selectedOp = task.selectedOperators[0];
+        ISwapManager.TradeBatch memory batch = swapManager.getTradeBatch(task.batchId);
+        address selectedOp = batch.selectedOperators[0];
 
         // Find the private key for the selected operator
         uint256 operatorPk;
@@ -433,17 +467,20 @@ contract SwapManagerBatchTest is Test {
     }
 
     function testProcessUEIRevertsIfNotSelected() public {
-        // Submit a UEI
+        // Submit a UEI (user submits directly)
         bytes memory ctBlob = abi.encode(
             bytes32(uint256(1)),
             bytes32(uint256(2)),
             bytes32(uint256(3)),
-            new uint8[](0),
-            new bytes32[](0)
+            new bytes32[](0)  // encArgs (all as euint256)
         );
 
-        vm.prank(address(mockHook));
-        bytes32 intentId = swapManager.submitUEI(ctBlob, block.timestamp + 1 hours);
+        vm.prank(user1);
+        bytes32 intentId = swapManager.submitEncryptedUEI(ctBlob, "", block.timestamp + 1 hours);
+
+        // Finalize batch to select operators
+        vm.warp(block.timestamp + 11 minutes);
+        swapManager.finalizeUEIBatch();
 
         // Try to process from non-selected operator
         address notSelectedOperator = address(0x999);
