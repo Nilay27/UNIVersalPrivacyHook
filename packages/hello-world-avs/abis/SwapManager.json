@@ -55,6 +55,19 @@
   },
   {
     "type": "function",
+    "name": "MAX_BATCH_IDLE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "MAX_RESPONSE_INTERVAL_BLOCKS",
     "inputs": [],
     "outputs": [
@@ -159,6 +172,25 @@
         "name": "",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "batchCounterToBatchId",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "stateMutability": "view"
@@ -343,6 +375,19 @@
   },
   {
     "type": "function",
+    "name": "currentBatchCounter",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "deregisterOperatorFromAVS",
     "inputs": [
       {
@@ -387,6 +432,13 @@
         "internalType": "bytes"
       }
     ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "finalizeUEIBatch",
+    "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
@@ -493,6 +545,57 @@
   },
   {
     "type": "function",
+    "name": "getTradeBatch",
+    "inputs": [
+      {
+        "name": "batchId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct ISwapManager.TradeBatch",
+        "components": [
+          {
+            "name": "intentIds",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          },
+          {
+            "name": "createdAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "finalizedAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "finalized",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "executed",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "selectedOperators",
+            "type": "address[]",
+            "internalType": "address[]"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getUEIExecution",
     "inputs": [
       {
@@ -579,24 +682,14 @@
             "internalType": "address"
           },
           {
-            "name": "ctBlob",
-            "type": "bytes",
-            "internalType": "bytes"
+            "name": "batchId",
+            "type": "bytes32",
+            "internalType": "bytes32"
           },
           {
             "name": "deadline",
             "type": "uint256",
             "internalType": "uint256"
-          },
-          {
-            "name": "blockSubmitted",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "selectedOperators",
-            "type": "address[]",
-            "internalType": "address[]"
           },
           {
             "name": "status",
@@ -665,6 +758,19 @@
         "name": "",
         "type": "bool",
         "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "lastTradeBatchExecutionTime",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -1110,31 +1216,7 @@
   },
   {
     "type": "function",
-    "name": "submitUEI",
-    "inputs": [
-      {
-        "name": "ctBlob",
-        "type": "bytes",
-        "internalType": "bytes"
-      },
-      {
-        "name": "deadline",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "intentId",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "submitUEIWithProof",
+    "name": "submitEncryptedUEI",
     "inputs": [
       {
         "name": "ctBlob",
@@ -1154,12 +1236,46 @@
     ],
     "outputs": [
       {
-        "name": "intentId",
+        "name": "ueiId",
         "type": "bytes32",
         "internalType": "bytes32"
       }
     ],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "tradeBatches",
+    "inputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "createdAt",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "finalizedAt",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "finalized",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "executed",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -1250,17 +1366,12 @@
         "internalType": "address"
       },
       {
-        "name": "ctBlob",
-        "type": "bytes",
-        "internalType": "bytes"
+        "name": "batchId",
+        "type": "bytes32",
+        "internalType": "bytes32"
       },
       {
         "name": "deadline",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "blockSubmitted",
         "type": "uint256",
         "internalType": "uint256"
       },
@@ -1433,6 +1544,68 @@
   },
   {
     "type": "event",
+    "name": "TradeSubmitted",
+    "inputs": [
+      {
+        "name": "tradeId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "submitter",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "batchId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "ctBlob",
+        "type": "bytes",
+        "indexed": false,
+        "internalType": "bytes"
+      },
+      {
+        "name": "deadline",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "UEIBatchFinalized",
+    "inputs": [
+      {
+        "name": "batchId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "selectedOperators",
+        "type": "address[]",
+        "indexed": false,
+        "internalType": "address[]"
+      },
+      {
+        "name": "finalizedAt",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "UEIProcessed",
     "inputs": [
       {
@@ -1452,86 +1625,6 @@
         "type": "bytes",
         "indexed": false,
         "internalType": "bytes"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "UEISubmitted",
-    "inputs": [
-      {
-        "name": "intentId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "submitter",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "ctBlob",
-        "type": "bytes",
-        "indexed": false,
-        "internalType": "bytes"
-      },
-      {
-        "name": "deadline",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "selectedOperators",
-        "type": "address[]",
-        "indexed": false,
-        "internalType": "address[]"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "UEISubmittedWithProof",
-    "inputs": [
-      {
-        "name": "intentId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "submitter",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "ctBlob",
-        "type": "bytes",
-        "indexed": false,
-        "internalType": "bytes"
-      },
-      {
-        "name": "inputProof",
-        "type": "bytes",
-        "indexed": false,
-        "internalType": "bytes"
-      },
-      {
-        "name": "deadline",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "selectedOperators",
-        "type": "address[]",
-        "indexed": false,
-        "internalType": "address[]"
       }
     ],
     "anonymous": false

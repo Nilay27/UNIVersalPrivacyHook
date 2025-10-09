@@ -67,8 +67,8 @@ interface ISwapManager {
     // Trade batch structure for batching similar trades
     struct TradeBatch {
         bytes32[] intentIds;     // Trade IDs in this batch
-        uint256 createdBlock;    // Block when batch created
-        uint256 finalizedBlock;  // Block when finalized
+        uint256 createdAt;       // Timestamp when batch created
+        uint256 finalizedAt;     // Timestamp when finalized
         bool finalized;          // Whether finalized
         bool executed;           // Whether executed
         address[] selectedOperators; // Operators for this batch

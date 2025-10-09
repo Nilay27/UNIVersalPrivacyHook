@@ -102,7 +102,7 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
     // Trade batch management (keeper-triggered batching)
     // NOTE: Off-chain keeper bot should call finalizeUEIBatch() every few minutes
     // or whenever idle time exceeds MAX_BATCH_IDLE to seal batches and grant decrypt permissions
-    uint256 public constant MAX_BATCH_IDLE = 10 minutes;
+    uint256 public constant MAX_BATCH_IDLE = 1 minutes;
     uint256 public lastTradeBatchExecutionTime;
     uint256 public currentBatchCounter; // Incremental batch counter
     mapping(uint256 => bytes32) public batchCounterToBatchId; // Counter -> BatchId mapping
@@ -434,8 +434,8 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
             batchCounterToBatchId[currentBatchCounter] = batchId;
             tradeBatches[batchId] = TradeBatch({
                 intentIds: new bytes32[](0),
-                createdBlock: block.number,
-                finalizedBlock: 0,
+                createdAt: block.timestamp,
+                finalizedAt: 0,
                 finalized: false,
                 executed: false,
                 selectedOperators: new address[](0)
@@ -526,13 +526,13 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
 
         // Require either timeout passed or admin override
         require(
-            block.timestamp >= batch.createdBlock + MAX_BATCH_IDLE || msg.sender == admin,
+            block.timestamp >= batch.createdAt + MAX_BATCH_IDLE || msg.sender == admin,
             "Batch not ready for finalization"
         );
 
         // Mark as finalized
         batch.finalized = true;
-        batch.finalizedBlock = block.number;
+        batch.finalizedAt = block.timestamp;
 
         // Select operators using existing deterministic selection
         address[] memory selectedOps = _selectOperatorsForBatch(batchId);
@@ -568,8 +568,8 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
         batchCounterToBatchId[currentBatchCounter] = newBatchId;
         tradeBatches[newBatchId] = TradeBatch({
             intentIds: new bytes32[](0),
-            createdBlock: block.number,
-            finalizedBlock: 0,
+            createdAt: block.timestamp,
+            finalizedAt: 0,
             finalized: false,
             executed: false,
             selectedOperators: new address[](0)
