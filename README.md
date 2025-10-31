@@ -241,6 +241,125 @@ sequenceDiagram
     end
 ```
 
+## 🔄 How It Works
+
+### Phase 1: Epoch Initialization
+
+```mermaid
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#03dac6', 'primaryTextColor':'#fff', 'primaryBorderColor':'#00a896', 'lineColor':'#03dac6', 'secondaryColor':'#bb86fc', 'tertiaryColor':'#3700b3', 'background':'#121212', 'mainBkg':'#1f1f1f', 'secondBkg':'#2d2d2d', 'labelBackground':'#2d2d2d', 'actorBkg':'#424242', 'actorBorder':'#03dac6', 'actorTextColor':'#fff', 'signalColor':'#03dac6', 'signalTextColor':'#fff'}}}%%
+sequenceDiagram
+    participant Admin
+    participant TradeManager
+    participant CoFHE
+
+    rect rgb(30, 60, 80)
+        Note over Admin,TradeManager: PHASE 1: Epoch Initialization
+        Admin->>CoFHE: Encrypt simulation window
+        Note over Admin,CoFHE: Start: 7 days ago<br/>End: 1 day ago
+        Admin->>TradeManager: startEpoch(encSimStart, encSimEnd, weights)
+        TradeManager-->>Admin: Epoch started
+    end
+```
+
+### Phase 2: Strategy Submission
+
+```mermaid
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#4ecdc4', 'primaryTextColor':'#fff', 'primaryBorderColor':'#45b7d1', 'lineColor':'#4ecdc4', 'secondaryColor':'#ff6b6b', 'tertiaryColor':'#3700b3', 'background':'#121212', 'mainBkg':'#1f1f1f', 'secondBkg':'#2d2d2d', 'labelBackground':'#2d2d2d', 'actorBkg':'#424242', 'actorBorder':'#4ecdc4', 'actorTextColor':'#fff', 'signalColor':'#4ecdc4', 'signalTextColor':'#fff'}}}%%
+sequenceDiagram
+    participant Trader
+    participant CoFHE
+    participant TradeManager
+    participant AVS
+    participant "Avail Nexus"
+
+    rect rgb(60, 80, 40)
+        Note over Trader,TradeManager: PHASE 2: Strategy Submission
+        Trader->>CoFHE: Encrypt strategy nodes
+        Note over Trader,CoFHE: Encoder, Target,<br/>Selector, Args
+        Trader->>TradeManager: submitEncryptedStrategy(targetChainId)
+        TradeManager->>AVS: Grant decryption permission
+        TradeManager-->>Trader: Strategy submitted
+        TradeManager-->>"Avail Nexus": Emit StrategySubmitted metadata
+        AVS->>AVS: Listen for StrategySubmitted event
+        "Avail Nexus"-->>AVS: Surface target chain routing
+    end
+```
+
+### Phase 3: AVS Processing
+
+```mermaid
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#bb86fc', 'primaryTextColor':'#fff', 'primaryBorderColor':'#9f6bff', 'lineColor':'#bb86fc', 'secondaryColor':'#03dac6', 'tertiaryColor':'#3700b3', 'background':'#121212', 'mainBkg':'#1f1f1f', 'secondBkg':'#2d2d2d', 'labelBackground':'#2d2d2d', 'actorBkg':'#424242', 'actorBorder':'#bb86fc', 'actorTextColor':'#fff', 'signalColor':'#bb86fc', 'signalTextColor':'#fff'}}}%%
+sequenceDiagram
+    participant AVS
+    participant CoFHE
+    participant TradeManager
+    participant "Avail Nexus"
+
+    rect rgb(40, 80, 60)
+        Note over AVS,TradeManager: PHASE 3: AVS Processing (Off-chain)
+        AVS->>TradeManager: Fetch encrypted strategy
+        AVS->>CoFHE: Batch decrypt nodes
+        CoFHE-->>AVS: Decrypted values
+        AVS->>"Avail Nexus": Fetch cross-chain routing context
+        "Avail Nexus"-->>AVS: Unified balances & target chain info
+        AVS->>AVS: Simulate on 100k notional
+        AVS->>AVS: Calculate APY
+        AVS->>CoFHE: Encrypt APY
+        AVS->>TradeManager: reportEncryptedAPY()
+    end
+```
+
+### Phase 4: Epoch Closure & Finalization
+
+```mermaid
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#ff6b6b', 'primaryTextColor':'#fff', 'primaryBorderColor':'#ee5a6f', 'lineColor':'#ff6b6b', 'secondaryColor':'#4ecdc4', 'tertiaryColor':'#3700b3', 'background':'#121212', 'mainBkg':'#1f1f1f', 'secondBkg':'#2d2d2d', 'labelBackground':'#2d2d2d', 'actorBkg':'#424242', 'actorBorder':'#ff6b6b', 'actorTextColor':'#fff', 'signalColor':'#ff6b6b', 'signalTextColor':'#fff'}}}%%
+sequenceDiagram
+    participant Admin
+    participant TradeManager
+    participant AVS
+    participant "Avail Nexus"
+
+    rect rgb(60, 40, 80)
+        Note over Admin,AVS: PHASE 4: Epoch Closure & Finalization
+        Admin->>TradeManager: closeEpoch()
+        TradeManager->>TradeManager: Request APY decryption
+        AVS->>AVS: Listen for EpochClosed event
+        AVS->>AVS: Fetch all APYs
+        AVS->>AVS: Rank by APY
+        AVS->>AVS: Select top winners
+        AVS->>TradeManager: finalizeEpoch(winners, APYs)
+        TradeManager-->>"Avail Nexus": Emit FinalizedEpoch metadata
+        TradeManager-->>Admin: Winners selected
+        "Avail Nexus"-->>AVS: Confirm cross-chain dispatch windows
+    end
+```
+
+### Phase 5: Strategy Execution
+
+```mermaid
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#ffd93d', 'primaryTextColor':'#000', 'primaryBorderColor':'#f4c430', 'lineColor':'#ffd93d', 'secondaryColor':'#6bcf7f', 'tertiaryColor':'#3700b3', 'background':'#121212', 'mainBkg':'#1f1f1f', 'secondBkg':'#2d2d2d', 'labelBackground':'#2d2d2d', 'actorBkg':'#424242', 'actorBorder':'#ffd93d', 'actorTextColor':'#fff', 'signalColor':'#ffd93d', 'signalTextColor':'#fff'}}}%%
+sequenceDiagram
+    participant AVS
+    participant TradeManager
+    participant "Avail Nexus"
+    participant BoringVault
+    participant "Base DeFi"
+    participant "Target Chains Defi"
+
+    rect rgb(30, 80, 50)
+        Note over AVS: PHASE 5: Strategy Execution
+        AVS->>AVS: Get winner strategies from events
+        AVS->>AVS: Aggregate calls
+        AVS->>AVS: Reconstruct calldata
+        AVS->>AVS: Sign for consensus
+        AVS->>TradeManager: executeEpochTopStrategiesAggregated() (base chain)
+        TradeManager->>BoringVault: Execute aggregated strategy
+        BoringVault->>"Base DeFi": Deploy capital
+        AVS->>"Avail Nexus": Dispatch cross-chain bundles
+        "Avail Nexus"->>"Target Chains Defi": Relay aggregated calldata
+    end
+```
+
 ### Core Technologies
 
 1. **FHEVM (Fully Homomorphic Encryption Virtual Machine)**
