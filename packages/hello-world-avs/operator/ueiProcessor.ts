@@ -11,7 +11,7 @@
  *    - Batch decrypt all components using FHEVM
  *    - Reconstruct calldata (for POC: simple transfer)
  *    - Get consensus signatures from other operators
- *    - Call processUEI(intentId, decoder, target, calldata, signatures)
+ *    - Call processUEI(intentIds[], decoders[], targets[], calldatas[], signatures[])
  * 5. Log execution results
  */
 
@@ -19,15 +19,25 @@ import { ethers } from 'ethers';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import { createInstance, SepoliaConfig } from '@zama-fhe/relayer-sdk/node';
+import {
+    encodeProtocolCalldata,
+    prepareProtocolArguments,
+    ProtocolCallLookupResult,
+    resolveProtocolCall,
+} from './utils';
+import { registerConfiguredProtocolTargets } from './config/protocolTargets';
 
 dotenv.config();
 
 const PROVIDER_URL = process.env.RPC_URL || 'https://sepolia.infura.io/v3/YOUR_KEY';
 const PRIVATE_KEY = process.env.PRIVATE_KEY || '';
 
+// Register protocol mappings for all known chains on startup
+registerConfiguredProtocolTargets();
+
 // Deployed contract addresses
-const SWAP_MANAGER = '0xE1e00b5d08a08Cb141a11a922e48D4c06d66D3bf';
-const BORING_VAULT = '0x4D2a5229C238EEaF5DB0912eb4BE7c39575369f0';
+const SWAP_MANAGER = '0x04452661c2F3f91594eD5E7ab341281a2E1A04b4';
+const BORING_VAULT = '0x1B7Bbc206Fc58413dCcDC9A4Ad1c5a95995a3926';
 
 // FHEVM instance for decryption
 let fhevmInstance: any = null;
@@ -46,34 +56,37 @@ async function initializeFhevmInstance() {
 
 /**
  * Decode ctBlob to extract encrypted handles
- * NEW FORMAT: abi.encode(bytes32 decoder, bytes32 target, bytes32 selector, bytes32[] args)
+ * NEW FORMAT: abi.encode(bytes32 decoder, bytes32 target, bytes32 selector, bytes32 chainId, bytes32[] args)
  * NO argTypes array!
  */
 function decodeCTBlob(ctBlob: string): {
     encDecoder: string;
     encTarget: string;
     encSelector: string;
+    encChainId: string;
     encArgs: string[];
 } {
     try {
         // Decode with NEW format (no argTypes!)
         const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
-            ['bytes32', 'bytes32', 'bytes32', 'bytes32[]'],
+            ['bytes32', 'bytes32', 'bytes32', 'bytes32', 'bytes32[]'],
             ctBlob
         );
 
-        const [encDecoder, encTarget, encSelector, encArgs] = decoded;
+        const [encDecoder, encTarget, encSelector, encChainId, encArgs] = decoded;
 
         console.log("📦 Decoded ctBlob:");
         console.log(`  Decoder handle: ${encDecoder}`);
         console.log(`  Target handle: ${encTarget}`);
         console.log(`  Selector handle: ${encSelector}`);
+        console.log(`  ChainId handle: ${encChainId}`);
         console.log(`  Args count: ${encArgs.length}`);
 
         return {
             encDecoder,
             encTarget,
             encSelector,
+            encChainId,
             encArgs
         };
     } catch (error) {
@@ -89,6 +102,7 @@ async function batchDecryptUEI(
     encDecoder: string,
     encTarget: string,
     encSelector: string,
+    encChainId: string,
     encArgs: string[],
     contractAddress: string,
     operatorWallet: ethers.Wallet
@@ -96,6 +110,7 @@ async function batchDecryptUEI(
     decoder: string;
     target: string;
     selector: string;
+    chainId: number;
     args: bigint[];
 }> {
     try {
@@ -108,6 +123,7 @@ async function batchDecryptUEI(
             { handle: encDecoder, contractAddress },
             { handle: encTarget, contractAddress },
             { handle: encSelector, contractAddress },
+            { handle: encChainId, contractAddress },
             ...encArgs.map(handle => ({ handle, contractAddress }))
         ];
 
@@ -158,15 +174,17 @@ async function batchDecryptUEI(
         const target = ethers.getAddress(ethers.toBeHex(BigInt(results[1] as any), 20));
         const selectorNum = Number(results[2]);
         const selector = `0x${selectorNum.toString(16).padStart(8, '0')}`;
-        const args = results.slice(3).map(val => BigInt(val as any));
+        const chainId = Number(results[3]);
+        const args = results.slice(4).map(val => BigInt(val as any));
 
         console.log("🔍 Decrypted UEI Details:");
         console.log(`  Decoder: ${decoder}`);
         console.log(`  Target: ${target}`);
         console.log(`  Selector: ${selector}`);
+        console.log(`  ChainId: ${chainId}`);
         console.log(`  Args (${args.length}):`, args.map(a => a.toString()));
 
-        return { decoder, target, selector, args };
+        return { decoder, target, selector, chainId, args };
     } catch (error) {
         console.error("❌ Decryption failed:", error);
         throw error;
@@ -177,140 +195,177 @@ async function batchDecryptUEI(
  * Reconstruct calldata for simple transfer
  * For POC: assume transfer(address to, uint256 amount)
  */
-function reconstructTransferCalldata(
-    selector: string,
-    args: bigint[]
-): string {
-    console.log("\n🔧 Reconstructing calldata...");
-
-    // For transfer: args[0] = recipient (address), args[1] = amount (uint256)
-    if (args.length !== 2) {
-        throw new Error(`Expected 2 args for transfer, got ${args.length}`);
-    }
-
-    const recipient = ethers.getAddress(ethers.toBeHex(args[0], 20));
-    const amount = args[1];
-
-    console.log(`  Function: transfer(address,uint256)`);
-    console.log(`  Recipient: ${recipient}`);
-    console.log(`  Amount: ${amount.toString()}`);
-
-    // Encode arguments
-    const encodedArgs = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['address', 'uint256'],
-        [recipient, amount]
-    );
-
-    // Combine selector + encoded args
-    const calldata = selector + encodedArgs.slice(2);
-
-    console.log(`  Calldata: ${calldata}`);
-    return calldata;
+function formatArgValue(value: string | bigint): string {
+    return typeof value === 'bigint' ? value.toString() : value;
 }
 
-/**
- * Create operator signature for consensus
- */
-async function createOperatorSignature(
-    operatorWallet: ethers.Wallet,
-    intentId: string,
-    decoder: string,
+function reconstructCalldata(
+    chainId: number,
     target: string,
-    reconstructedData: string
+    selector: string,
+    args: bigint[]
+): {
+    definition: ProtocolCallLookupResult;
+    calldata: string;
+    preparedArgs: (string | bigint)[];
+} {
+    console.log("\n🔧 Reconstructing calldata...");
+        console.log(`  Target: ${target}`);
+        console.log(`  Selector: ${selector}`);
+        console.log(`  ChainId: ${chainId}`);
+
+        try {
+            const definition = resolveProtocolCall(chainId, target, selector);
+        console.log(`  Protocol: ${definition.protocol}`);
+        console.log(`  Function: ${definition.signature}`);
+
+        const preparedArgs = prepareProtocolArguments(definition, args);
+        definition.argNames.forEach((name, index) => {
+            const value = preparedArgs[index];
+            console.log(`    ${name}: ${formatArgValue(value)}`);
+        });
+
+        const calldata = encodeProtocolCalldata(definition, args);
+        console.log(`  Calldata: ${calldata}`);
+
+        return {
+            definition,
+            calldata,
+            preparedArgs,
+        };
+    } catch (error) {
+        console.error("❌ Failed to reconstruct calldata:", error);
+        throw error;
+    }
+}
+
+async function createAggregatedSignature(
+    operatorWallet: ethers.Wallet,
+    batchId: string,
+    intentIds: string[],
+    decoders: string[],
+    targets: string[],
+    calldatas: string[]
 ): Promise<string> {
-    // Create hash of the data
+    const abiCoder = ethers.AbiCoder.defaultAbiCoder();
     const dataHash = ethers.keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(
-            ['bytes32', 'address', 'address', 'bytes'],
-            [intentId, decoder, target, reconstructedData]
+        abiCoder.encode(
+            ['bytes32', 'bytes32[]', 'address[]', 'address[]', 'bytes[]'],
+            [batchId, intentIds, decoders, targets, calldatas]
         )
     );
 
-    // Sign with EIP-191 prefix (eth_sign format)
     const signature = await operatorWallet.signMessage(ethers.getBytes(dataHash));
-
-    console.log(`  Signature created: ${signature.slice(0, 20)}...`);
+    console.log(`\n✍️  Aggregated signature created: ${signature.slice(0, 20)}...`);
     return signature;
 }
 
-/**
- * Process a single UEI trade
- */
-async function processUEITrade(
+type PreparedIntent = {
+    intentId: string;
+    decoder: string;
+    target: string;
+    selector: string;
+    chainId: number;
+    calldata: string;
+    args: bigint[];
+    definition: ProtocolCallLookupResult;
+    preparedArgs: (string | bigint)[];
+};
+
+async function processAggregatedUEIs(
     swapManager: ethers.Contract,
-    intentId: string,
-    ctBlob: string,
+    batchId: string,
+    trades: PreparedIntent[],
     operatorWallet: ethers.Wallet
-): Promise<void> {
-    try {
-        console.log("\n" + "=".repeat(80));
-        console.log(`🎯 Processing UEI: ${intentId}`);
-        console.log("=".repeat(80));
+) {
+    if (!trades.length) {
+        console.log("No trades to process for this batch.");
+        return;
+    }
 
-        // Step 1: Decode ctBlob
-        const decoded = decodeCTBlob(ctBlob);
+    console.log("\n📦 Preparing aggregated execution payload...");
+    const chainSet = new Set(trades.map((trade) => trade.chainId));
+    if (chainSet.size > 1) {
+        console.warn("⚠️  Detected multiple chainIds in a single batch. Ensure cross-chain execution is handled off-chain.");
+    }
 
-        // Step 2: Batch decrypt
-        const decrypted = await batchDecryptUEI(
-            decoded.encDecoder,
-            decoded.encTarget,
-            decoded.encSelector,
-            decoded.encArgs,
-            SWAP_MANAGER,
-            operatorWallet
-        );
+    trades.forEach((trade, index) => {
+        console.log(`  Intent ${index + 1}: ${trade.intentId}`);
+        console.log(`    Target: ${trade.target}`);
+        console.log(`    Decoder: ${trade.decoder}`);
+        console.log(`    Selector: ${trade.selector}`);
+        console.log(`    ChainId: ${trade.chainId}`);
+        console.log(`    Function: ${trade.definition.signature}`);
+        trade.definition.argNames.forEach((name, idx) => {
+            const value = trade.preparedArgs[idx];
+            console.log(`      ${name}: ${formatArgValue(value)}`);
+        });
+        console.log(`    Calldata length: ${trade.calldata.length} chars`);
+    });
 
-        // Step 3: Reconstruct calldata
-        const calldata = reconstructTransferCalldata(decrypted.selector, decrypted.args);
+    const intentIds = trades.map((t) => t.intentId);
+    const decoders = trades.map((t) => t.decoder);
+    const targets = trades.map((t) => t.target);
+    const calldatas = trades.map((t) => t.calldata);
 
-        // Step 4: Create operator signature
-        console.log("\n✍️  Creating operator signature...");
-        const signature = await createOperatorSignature(
-            operatorWallet,
-            intentId,
-            decrypted.decoder,
-            decrypted.target,
-            calldata
-        );
+    const signature = await createAggregatedSignature(
+        operatorWallet,
+        batchId,
+        intentIds,
+        decoders,
+        targets,
+        calldatas
+    );
 
-        // Step 5: Submit to processUEI
-        console.log("\n📤 Submitting processUEI transaction...");
-        console.log(`  Intent ID: ${intentId}`);
-        console.log(`  Decoder: ${decrypted.decoder}`);
-        console.log(`  Target: ${decrypted.target}`);
-        console.log(`  Calldata length: ${calldata.length} chars`);
+    console.log("\n📤 Submitting aggregated processUEI transaction...");
+    const tx = await swapManager.processUEI(
+        intentIds,
+        decoders,
+        targets,
+        calldatas,
+        [signature]
+    );
+    console.log(`  Transaction hash: ${tx.hash}`);
+    console.log("  Waiting for confirmation...");
 
-        const tx = await swapManager.processUEI(
-            intentId,
-            decrypted.decoder,
-            decrypted.target,
-            calldata,
-            [signature] // Array of signatures (single operator for POC)
-        );
+    const receipt = await tx.wait();
+    console.log("✅ Aggregated UEIs processed successfully!");
+    console.log(`  Gas used: ${receipt.gasUsed.toString()}`);
 
-        console.log(`  Transaction hash: ${tx.hash}`);
-        console.log("  Waiting for confirmation...");
+    const abiCoder = ethers.AbiCoder.defaultAbiCoder();
 
-        const receipt = await tx.wait();
-        console.log("✅ UEI processed successfully!");
-        console.log(`  Gas used: ${receipt.gasUsed.toString()}`);
-
-        // Check execution result
-        const execution = await swapManager.getUEIExecution(intentId);
+    for (const trade of trades) {
+        const execution = await swapManager.getUEIExecution(trade.intentId);
         console.log("\n📊 Execution Result:");
+        console.log(`  Intent ID: ${trade.intentId}`);
         console.log(`  Success: ${execution.success}`);
         console.log(`  Executor: ${execution.executor}`);
         console.log(`  Executed at: ${new Date(Number(execution.executedAt) * 1000).toLocaleString()}`);
 
-        if (execution.result && execution.result !== '0x') {
-            console.log(`  Result: ${execution.result}`);
+        const needsDecode = trades.length > 1 && execution.callData !== '0x';
+        const needsResult = execution.result !== '0x';
+
+        if (needsDecode || needsResult) {
+            let decodedCalldata: string[] = [];
+            if (needsDecode) {
+                const [callDatasPacked] = abiCoder.decode(['bytes[]'], execution.callData);
+                decodedCalldata = callDatasPacked as string[];
+            } else {
+                decodedCalldata = [execution.callData];
+            }
+
+            let operationResults: string[] = [];
+            if (needsResult) {
+                const [resultBytes] = abiCoder.decode(['bytes[]'], execution.result);
+                operationResults = resultBytes as string[];
+            }
+
+            decodedCalldata.forEach((calldata, index) => {
+                console.log(`  Step ${index + 1} calldata: ${calldata}`);
+                const result = operationResults[index] || '0x';
+                console.log(`  Step ${index + 1} result: ${result}`);
+            });
         }
-
-        console.log("\n" + "=".repeat(80));
-
-    } catch (error: any) {
-        console.error(`\n❌ Failed to process UEI ${intentId}:`, error.message);
-        throw error;
     }
 }
 
@@ -366,28 +421,67 @@ async function handleBatchFinalized(
             return;
         }
 
-        // Process each trade
-        for (let i = 0; i < events.length; i++) {
-            const event = events[i];
-
-            // Extract args from EventLog
-            if (!('args' in event) || !event.args) continue;
-
-            const intentId = event.args[0];
-            const ctBlob = event.args[3]; // ctBlob is 4th parameter in TradeSubmitted
-
-            console.log(`\n📥 Processing trade ${i + 1}/${events.length}...`);
-
-            await processUEITrade(swapManager, intentId, ctBlob, operatorWallet);
-
-            // Small delay between processing trades
-            if (i < events.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            }
+        if (events.length === 0) {
+            console.log("⚠️  No TradeSubmitted events found for this batch!");
+            return;
         }
 
-        console.log("\n✅ All trades in batch processed!");
-        console.log("=" .repeat(80));
+        const ctBlobMap = new Map<string, string>();
+        for (const event of events) {
+            if (!('args' in event) || !event.args) continue;
+            const intentId = event.args[0] as string;
+            const ctBlob = event.args[3] as string;
+            ctBlobMap.set(intentId, ctBlob);
+        }
+
+        const preparedIntents: PreparedIntent[] = [];
+        for (let i = 0; i < batch.intentIds.length; i++) {
+            const intentId = batch.intentIds[i] as string;
+            const ctBlob = ctBlobMap.get(intentId);
+            if (!ctBlob) {
+                console.warn(`⚠️  Missing ctBlob for intent ${intentId}, skipping`);
+                continue;
+            }
+
+            console.log(`\n📥 Preparing intent ${i + 1}/${batch.intentIds.length} (${intentId})`);
+            const decoded = decodeCTBlob(ctBlob);
+            const decrypted = await batchDecryptUEI(
+                decoded.encDecoder,
+                decoded.encTarget,
+                decoded.encSelector,
+                decoded.encChainId,
+                decoded.encArgs,
+                SWAP_MANAGER,
+                operatorWallet
+            );
+            const {
+                definition,
+                calldata,
+                preparedArgs,
+            } = reconstructCalldata(decrypted.chainId, decrypted.target, decrypted.selector, decrypted.args);
+
+            preparedIntents.push({
+                intentId,
+                decoder: decrypted.decoder,
+                target: decrypted.target,
+                selector: decrypted.selector,
+                chainId: decrypted.chainId,
+                calldata,
+                args: decrypted.args,
+                definition,
+                preparedArgs,
+            });
+        }
+
+        await processAggregatedUEIs(
+            swapManager,
+            batchId,
+            preparedIntents,
+            operatorWallet
+        );
+
+        console.log("\n✅ Batch processed end-to-end!");
+        console.log("=".repeat(80));
 
     } catch (error: any) {
         console.error("\n❌ Error handling batch finalization:", error.message);
@@ -436,17 +530,18 @@ async function startUEIProcessor() {
 
             if (events.length > 0) {
                 console.log(`\n📜 Found ${events.length} past UEIBatchFinalized events`);
-                for (const event of events) {
-                    if (!('args' in event) || !event.args) continue;
+        for (const event of events) {
+            if (!('args' in event) || !event.args) continue;
 
-                    const batchId = event.args[0];
-                    const selectedOperators = event.args[1];
+            const batchId = event.args[0];
+            const selectedOperators = event.args[1];
 
-                    if (!processedBatches.has(batchId)) {
-                        processedBatches.add(batchId);
-                        await handleBatchFinalized(
-                            provider,
-                            swapManager,
+            // TODO: Skip batches that are already executed once contract exposes execution status on-chain.
+            if (!processedBatches.has(batchId)) {
+                processedBatches.add(batchId);
+                await handleBatchFinalized(
+                    provider,
+                    swapManager,
                             batchId,
                             selectedOperators,
                             operatorWallet
@@ -482,12 +577,13 @@ async function startUEIProcessor() {
                     for (const event of events) {
                         if (!('args' in event) || !event.args) continue;
 
-                        const batchId = event.args[0];
-                        const selectedOperators = event.args[1];
+                    const batchId = event.args[0];
+                    const selectedOperators = event.args[1];
 
-                        if (!processedBatches.has(batchId)) {
-                            processedBatches.add(batchId);
-                            console.log(`\n🔔 New UEIBatchFinalized event detected at block ${event.blockNumber}`);
+                    // TODO: Skip batches that are already executed once contract exposes execution status on-chain.
+                    if (!processedBatches.has(batchId)) {
+                        processedBatches.add(batchId);
+                        console.log(`\n🔔 New UEIBatchFinalized event detected at block ${event.blockNumber}`);
 
                             await handleBatchFinalized(
                                 provider,
@@ -522,4 +618,4 @@ if (require.main === module) {
     startUEIProcessor().catch(console.error);
 }
 
-export { startUEIProcessor, processUEITrade };
+export { startUEIProcessor };

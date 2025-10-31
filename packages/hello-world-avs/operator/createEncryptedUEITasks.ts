@@ -4,7 +4,7 @@
  * This script submits a simple USDC transfer UEI to the SwapManager
  * Flow:
  * 1. Encrypt: decoder (address), target (USDC), selector (transfer), args [recipient, amount]
- * 2. Submit to SwapManager.submitEncryptedUEI(ctBlob, inputProof, deadline)
+ * 2. Submit to SwapManager.submitEncryptedUEIBatch(ctBlobs, inputProofs, deadlines)
  * 3. Wait for batch finalization (handled by keeper or manual call)
  * 4. Operator will decrypt and process (handled by ueiProcessor.ts)
  */
@@ -20,8 +20,8 @@ const PROVIDER_URL = process.env.RPC_URL || 'https://sepolia.infura.io/v3/YOUR_K
 const PRIVATE_KEY = process.env.PRIVATE_KEY || '';
 
 // Sepolia testnet addresses
-const SWAP_MANAGER = '0xE1e00b5d08a08Cb141a11a922e48D4c06d66D3bf';
-const BORING_VAULT = '0x4D2a5229C238EEaF5DB0912eb4BE7c39575369f0';
+const SWAP_MANAGER = '0x04452661c2F3f91594eD5E7ab341281a2E1A04b4';
+const BORING_VAULT = '0x1B7Bbc206Fc58413dCcDC9A4Ad1c5a95995a3926';
 const USDC_SEPOLIA = '0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1'; // Sepolia USDC
 
 // Mock decoder for ERC20 transfers (for testing - in production would be verified via merkle tree)
@@ -51,6 +51,7 @@ async function batchEncryptUEIComponents(
     decoder: string,
     target: string,
     selector: string,
+    chainId: number,
     args: (string | bigint)[],
     contractAddress: string,
     signerAddress: string
@@ -58,6 +59,7 @@ async function batchEncryptUEIComponents(
     encryptedDecoder: any;
     encryptedTarget: any;
     encryptedSelector: any;
+    encryptedChainId: any;
     encryptedArgs: any[];
     inputProof: string;
 }> {
@@ -66,6 +68,7 @@ async function batchEncryptUEIComponents(
         console.log(`  Decoder: ${decoder}`);
         console.log(`  Target: ${target}`);
         console.log(`  Selector: ${selector}`);
+        console.log(`  ChainId: ${chainId}`);
         console.log(`  Args (${args.length}):`, args);
 
         const fhevm = await initializeFhevmInstance();
@@ -80,6 +83,9 @@ async function batchEncryptUEIComponents(
         // Encrypt selector as euint32
         const selectorBigInt = BigInt(selector);
         encryptedInput.add32(Number(selectorBigInt & BigInt(0xFFFFFFFF)));
+
+        // Encrypt chainId as euint32
+        encryptedInput.add32(chainId);
 
         // Encrypt all args as euint256 (NO argTypes!)
         for (const arg of args) {
@@ -98,7 +104,8 @@ async function batchEncryptUEIComponents(
             encryptedDecoder: encrypted.handles[0],
             encryptedTarget: encrypted.handles[1],
             encryptedSelector: encrypted.handles[2],
-            encryptedArgs: encrypted.handles.slice(3),
+            encryptedChainId: encrypted.handles[3],
+            encryptedArgs: encrypted.handles.slice(4),
             inputProof: ethers.hexlify(encrypted.inputProof)
         };
     } catch (error) {
@@ -112,12 +119,14 @@ async function batchEncryptUEIComponents(
  */
 async function createUSDCTransferUEI() {
     try {
-        console.log("\n🚀 Creating USDC Transfer UEI\n");
-        console.log("=" .repeat(60));
+        console.log("\n🚀 Creating USDC Transfer UEIs\n");
+        console.log("=".repeat(60));
 
         // Setup provider and wallet
         const provider = new ethers.JsonRpcProvider(PROVIDER_URL);
         const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+        const network = await provider.getNetwork();
+        const chainId = Number(network.chainId);
 
         console.log("👤 Submitter wallet:", wallet.address);
         console.log("💰 Boring Vault:", BORING_VAULT);
@@ -146,121 +155,167 @@ async function createUSDCTransferUEI() {
         await initializeFhevmInstance();
 
         // Batch encrypt: decoder, target, selector, args
+        const intentTemplates = [
+            {
+                description: "Transfer 100 USDC back to the submitter",
+                decoder: MOCK_ERC20_DECODER,
+                target: USDC_SEPOLIA,
+                selector: transferSelector,
+                args: [
+                    BigInt(recipient),
+                    amount
+                ]
+            },
+            {
+                description: "Transfer 50 USDC to the boring vault (demo aggregated intent)",
+                decoder: MOCK_ERC20_DECODER,
+                target: USDC_SEPOLIA,
+                selector: transferSelector,
+                args: [
+                    BigInt(recipient),
+                    ethers.parseUnits('50', 6)
+                ]
+            }
+        ];
+
+        const ctBlobs: string[] = [];
+        const inputProofs: string[] = [];
+        const deadlines: bigint[] = [];
+
+        const deadlineBase = Math.floor(Date.now() / 1000);
+
         console.log("\n🔐 Encrypting UEI components...");
-        const encrypted = await batchEncryptUEIComponents(
-            MOCK_ERC20_DECODER,  // decoder
-            USDC_SEPOLIA,        // target (USDC contract)
-            transferSelector,    // selector (transfer)
-            [
-                BigInt(recipient),  // arg[0]: recipient address as uint256
-                amount             // arg[1]: amount as uint256
-            ],
-            SWAP_MANAGER,        // contract address for encryption context
-            wallet.address       // signer address
+        for (let i = 0; i < intentTemplates.length; i++) {
+            const template = intentTemplates[i];
+            console.log(`\nIntent ${i + 1}: ${template.description}`);
+
+            const encrypted = await batchEncryptUEIComponents(
+                template.decoder,
+                template.target,
+                template.selector,
+                chainId,
+                template.args,
+                SWAP_MANAGER,
+                wallet.address
+            );
+
+            const ctBlob = ethers.AbiCoder.defaultAbiCoder().encode(
+                ['bytes32', 'bytes32', 'bytes32', 'bytes32', 'bytes32[]'],
+                [
+                    ethers.hexlify(encrypted.encryptedDecoder),
+                    ethers.hexlify(encrypted.encryptedTarget),
+                    ethers.hexlify(encrypted.encryptedSelector),
+                    ethers.hexlify(encrypted.encryptedChainId),
+                    encrypted.encryptedArgs.map(handle => ethers.hexlify(handle))
+                ]
+            );
+
+            console.log("📦 Created ctBlob");
+            console.log(`  Size: ${ctBlob.length} bytes`);
+            console.log(`  Input proof: ${encrypted.inputProof.length} chars`);
+
+            ctBlobs.push(ctBlob);
+            inputProofs.push(encrypted.inputProof);
+            deadlines.push(BigInt(deadlineBase + 3600 + (i * 300))); // stagger deadlines slightly
+        }
+
+        console.log("\n📤 Submitting batched UEIs to SwapManager...");
+        const expectedIds: string[] = await swapManager.submitEncryptedUEIBatch.staticCall(
+            ctBlobs,
+            inputProofs,
+            deadlines
         );
-
-        // Create ctBlob with NEW FORMAT: NO argTypes!
-        // Format: abi.encode(bytes32 encDecoder, bytes32 encTarget, bytes32 encSelector, bytes32[] encArgs)
-        const ctBlob = ethers.AbiCoder.defaultAbiCoder().encode(
-            ['bytes32', 'bytes32', 'bytes32', 'bytes32[]'],
-            [
-                ethers.hexlify(encrypted.encryptedDecoder),
-                ethers.hexlify(encrypted.encryptedTarget),
-                ethers.hexlify(encrypted.encryptedSelector),
-                encrypted.encryptedArgs.map(handle => ethers.hexlify(handle))
-            ]
-        );
-
-        console.log("\n📦 Created ctBlob:");
-        console.log(`  Size: ${ctBlob.length} bytes`);
-        console.log(`  Input proof: ${encrypted.inputProof.length} chars`);
-
-        // Submit to SwapManager
-        const deadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour
-
-        console.log("\n📤 Submitting UEI to SwapManager...");
-        console.log(`  Deadline: ${new Date(deadline * 1000).toLocaleString()}`);
-
-        const tx = await swapManager.submitEncryptedUEI(
-            ctBlob,
-            encrypted.inputProof,
-            deadline
+        const tx = await swapManager.submitEncryptedUEIBatch(
+            ctBlobs,
+            inputProofs,
+            deadlines
         );
 
         console.log(`  Transaction hash: ${tx.hash}`);
         console.log("  Waiting for confirmation...");
 
         const receipt = await tx.wait();
-        console.log("✅ UEI submitted successfully!");
+        console.log("✅ UEIs submitted successfully!");
 
-        // Extract intent ID from TradeSubmitted event
-        const tradeSubmittedEvent = receipt.logs.find((log: any) => {
+        console.log("\n🎯 Returned intent IDs (callStatic):");
+        expectedIds.forEach((id: string, index: number) => {
+            console.log(`  ${index + 1}. ${id}`);
+        });
+
+        const tradeEvents = receipt.logs
+            .map((log: any) => {
+                try {
+                    const parsed = swapManager.interface.parseLog(log);
+                    return parsed && parsed.name === 'TradeSubmitted' ? parsed : null;
+                } catch {
+                    return null;
+                }
+            })
+            .filter((evt: any) => evt !== null);
+
+        if (tradeEvents.length > 0) {
+            console.log("\n🎯 Trade Details:");
+            tradeEvents.forEach((event: any, index: number) => {
+                const tradeId = event.args[0];
+                const submitter = event.args[1];
+                const batchId = event.args[2];
+                const deadline = event.args[4];
+
+                console.log(`\nTrade ${index + 1}`);
+                console.log(`  Trade ID: ${tradeId}`);
+                console.log(`  Batch ID: ${batchId}`);
+                console.log(`  Submitter: ${submitter}`);
+                console.log(`  Deadline: ${new Date(Number(deadline) * 1000).toLocaleString()}`);
+
+                deadlines[index] = BigInt(deadline);
+            });
+        }
+
+        if (tradeEvents.length) {
+            const batchId = tradeEvents[0].args[2];
+            const task = await swapManager.getTradeBatch(batchId);
+            console.log("\n📊 Batch Snapshot (pre-finalize):");
+            console.log(`  Intent IDs tracked: ${task.intentIds.length}`);
+        }
+
+        console.log("\n⏳ Next Steps:");
+        console.log("  1. Waiting 5 seconds before triggering batch finalization...");
+        console.log("  2. Admin will finalize the batch (demo override).");
+        console.log("  3. Operators can then process all intents via ueiProcessor.ts.");
+
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        console.log("\n🔨 Finalizing batch as admin...");
+        const finalizeTx = await swapManager.finalizeUEIBatch();
+        console.log(`  Transaction hash: ${finalizeTx.hash}`);
+        console.log("  Waiting for confirmation...");
+
+        const finalizeReceipt = await finalizeTx.wait();
+        console.log("✅ Batch finalized!");
+
+        const batchFinalizedEvent = finalizeReceipt.logs.find((log: any) => {
             try {
                 const parsed = swapManager.interface.parseLog(log);
-                return parsed && parsed.name === 'TradeSubmitted';
+                return parsed && parsed.name === 'UEIBatchFinalized';
             } catch {
                 return false;
             }
         });
 
-        if (tradeSubmittedEvent) {
-            const parsed = swapManager.interface.parseLog(tradeSubmittedEvent);
-            const tradeId = parsed?.args[0];
-            const batchId = parsed?.args[2];
+        if (batchFinalizedEvent) {
+            const parsed = swapManager.interface.parseLog(batchFinalizedEvent);
+            const finalizedBatchId = parsed?.args[0];
+            const selectedOperators = parsed?.args[1];
+            const finalizedAt = parsed?.args[2];
 
-            console.log("\n🎯 Trade Details:");
-            console.log(`  Trade ID: ${tradeId}`);
-            console.log(`  Batch ID: ${batchId}`);
-            console.log(`  Submitter: ${parsed?.args[1]}`);
-            console.log(`  Deadline: ${new Date(Number(parsed?.args[4]) * 1000).toLocaleString()}`);
-
-            // Check task details
-            const task = await swapManager.getUEITask(tradeId);
-            console.log("\n📊 Task Status:");
-            console.log(`  Status: ${['Pending', 'Processing', 'Executed', 'Failed', 'Expired'][task.status]}`);
-            console.log(`  Batch ID: ${task.batchId}`);
-
-            console.log("\n⏳ Next Steps:");
-            console.log("  1. Waiting 5 seconds before triggering batch finalization...");
-            console.log("  2. Admin will forcefully finalize batch (admin override)");
-            console.log("  3. Operator will decrypt and process via ueiProcessor.ts");
-
-            // Wait 5 seconds
-            await new Promise(resolve => setTimeout(resolve, 5000));
-
-            console.log("\n🔨 Finalizing batch as admin...");
-            const finalizeTx = await swapManager.finalizeUEIBatch();
-            console.log(`  Transaction hash: ${finalizeTx.hash}`);
-            console.log("  Waiting for confirmation...");
-
-            const finalizeReceipt = await finalizeTx.wait();
-            console.log("✅ Batch finalized!");
-
-            // Extract UEIBatchFinalized event
-            const batchFinalizedEvent = finalizeReceipt.logs.find((log: any) => {
-                try {
-                    const parsed = swapManager.interface.parseLog(log);
-                    return parsed && parsed.name === 'UEIBatchFinalized';
-                } catch {
-                    return false;
-                }
+            console.log("\n🎉 Batch Finalized Event:");
+            console.log(`  Batch ID: ${finalizedBatchId}`);
+            console.log(`  Selected Operators (${selectedOperators.length}):`);
+            selectedOperators.forEach((op: string, i: number) => {
+                console.log(`    ${i + 1}. ${op}`);
             });
-
-            if (batchFinalizedEvent) {
-                const parsed = swapManager.interface.parseLog(batchFinalizedEvent);
-                const finalizedBatchId = parsed?.args[0];
-                const selectedOperators = parsed?.args[1];
-                const finalizedAt = parsed?.args[2];
-
-                console.log("\n🎉 Batch Finalized Event:");
-                console.log(`  Batch ID: ${finalizedBatchId}`);
-                console.log(`  Selected Operators (${selectedOperators.length}):`);
-                selectedOperators.forEach((op: string, i: number) => {
-                    console.log(`    ${i + 1}. ${op}`);
-                });
-                console.log(`  Finalized at: ${new Date(Number(finalizedAt) * 1000).toLocaleString()}`);
-                console.log("\n👂 Operator should now pick up and process this batch!");
-            }
+            console.log(`  Finalized at: ${new Date(Number(finalizedAt) * 1000).toLocaleString()}`);
+            console.log("\n👂 Operator should now pick up and process this batch!");
         }
 
         console.log("\n" + "=".repeat(60));

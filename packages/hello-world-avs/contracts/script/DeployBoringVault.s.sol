@@ -10,6 +10,10 @@ interface ISwapManager {
     function admin() external view returns (address);
 }
 
+interface IMintableERC20 {
+    function mint(address to, uint256 amount) external;
+}
+
 /**
  * @title DeployBoringVault
  * @notice Deploys SimpleBoringVault and configures it with SwapManager
@@ -19,7 +23,9 @@ contract DeployBoringVault is Script {
 
     // Deployed contract addresses on Sepolia
     address constant UNIVERSAL_PRIVACY_HOOK = 0x32841c9E0245C4B1a9cc29137d7E1F078e6f0080;
-    address constant SWAP_MANAGER = 0xE1e00b5d08a08Cb141a11a922e48D4c06d66D3bf;
+    address constant SWAP_MANAGER = 0x04452661c2F3f91594eD5E7ab341281a2E1A04b4;
+    address constant MOCK_USDC = 0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1;
+    address constant MOCK_USDT = 0xB1D9519e953B8513a4754f9B33d37eDba90c001D;
 
     function setUp() public virtual {
         deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
@@ -38,7 +44,7 @@ contract DeployBoringVault is Script {
         // Constructor params: hook, tradeManager
         SimpleBoringVault vault = new SimpleBoringVault(
             UNIVERSAL_PRIVACY_HOOK,
-            SWAP_MANAGER  // tradeManager = SwapManager
+            deployer
         );
 
         console2.log("\nSimpleBoringVault deployed at:", address(vault));
@@ -46,18 +52,19 @@ contract DeployBoringVault is Script {
         // Verify configuration
         console2.log("\nVerifying vault configuration...");
         require(vault.hook() == UNIVERSAL_PRIVACY_HOOK, "Hook mismatch");
-        require(vault.tradeManager() == SWAP_MANAGER, "TradeManager mismatch");
+        require(vault.tradeManager() == deployer, "TradeManager mismatch");
         console2.log("Hook:", vault.hook());
         console2.log("TradeManager:", vault.tradeManager());
 
-        // Verify SwapManager is authorized
-        require(vault.isAuthorized(SWAP_MANAGER), "SwapManager not authorized");
+        // Authorize new swap manager and set in contract
+        vault.setExecutor(SWAP_MANAGER, true);
         console2.log("SwapManager authorized:", vault.isAuthorized(SWAP_MANAGER));
 
-        // Set BoringVault address in SwapManager
         console2.log("\nSetting BoringVault in SwapManager...");
         ISwapManager(SWAP_MANAGER).setBoringVault(payable(address(vault)));
         console2.log("BoringVault set in SwapManager");
+
+        _mintStablecoins(address(vault), 100_000);
 
         vm.stopBroadcast();
 
@@ -99,5 +106,11 @@ contract DeployBoringVault is Script {
 
         vm.writeFile(fileName, json);
         console2.log("\nDeployment info written to:", fileName);
+    }
+
+    function _mintStablecoins(address vault, uint256 amountUnits) internal {
+        uint256 amount = amountUnits * 1e6;
+        IMintableERC20(MOCK_USDC).mint(vault, amount);
+        IMintableERC20(MOCK_USDT).mint(vault, amount);
     }
 }

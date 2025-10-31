@@ -1,161 +1,6 @@
 [
   {
     "type": "function",
-    "name": "allTaskHashes",
-    "inputs": [
-      {
-        "name": "taskIndex",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "allTaskResponses",
-    "inputs": [
-      {
-        "name": "operator",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "taskIndex",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bytes",
-        "internalType": "bytes"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "createNewSwapTask",
-    "inputs": [
-      {
-        "name": "user",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenIn",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenOut",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "encryptedAmount",
-        "type": "bytes",
-        "internalType": "bytes"
-      },
-      {
-        "name": "deadline",
-        "type": "uint64",
-        "internalType": "uint64"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct ISwapManager.SwapTask",
-        "components": [
-          {
-            "name": "hook",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "user",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "tokenIn",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "tokenOut",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "encryptedAmount",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "deadline",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "taskCreatedBlock",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "selectedOperators",
-            "type": "address[]",
-            "internalType": "address[]"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "createNewTask",
-    "inputs": [
-      {
-        "name": "name",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct ISwapManager.Task",
-        "components": [
-          {
-            "name": "name",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "taskCreatedBlock",
-            "type": "uint32",
-            "internalType": "uint32"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "finalizeBatch",
     "inputs": [
       {
@@ -169,6 +14,13 @@
         "internalType": "bytes"
       }
     ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "finalizeUEIBatch",
+    "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
@@ -200,8 +52,8 @@
           },
           {
             "name": "poolId",
-            "type": "address",
-            "internalType": "address"
+            "type": "bytes32",
+            "internalType": "bytes32"
           },
           {
             "name": "hook",
@@ -243,54 +95,44 @@
   },
   {
     "type": "function",
-    "name": "getTask",
+    "name": "getTradeBatch",
     "inputs": [
       {
-        "name": "taskIndex",
-        "type": "uint32",
-        "internalType": "uint32"
+        "name": "batchId",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "outputs": [
       {
         "name": "",
         "type": "tuple",
-        "internalType": "struct ISwapManager.SwapTask",
+        "internalType": "struct ISwapManager.TradeBatch",
         "components": [
           {
-            "name": "hook",
-            "type": "address",
-            "internalType": "address"
+            "name": "intentIds",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
           },
           {
-            "name": "user",
-            "type": "address",
-            "internalType": "address"
+            "name": "createdAt",
+            "type": "uint256",
+            "internalType": "uint256"
           },
           {
-            "name": "tokenIn",
-            "type": "address",
-            "internalType": "address"
+            "name": "finalizedAt",
+            "type": "uint256",
+            "internalType": "uint256"
           },
           {
-            "name": "tokenOut",
-            "type": "address",
-            "internalType": "address"
+            "name": "finalized",
+            "type": "bool",
+            "internalType": "bool"
           },
           {
-            "name": "encryptedAmount",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "deadline",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "taskCreatedBlock",
-            "type": "uint32",
-            "internalType": "uint32"
+            "name": "executed",
+            "type": "bool",
+            "internalType": "bool"
           },
           {
             "name": "selectedOperators",
@@ -390,24 +232,14 @@
             "internalType": "address"
           },
           {
-            "name": "ctBlob",
-            "type": "bytes",
-            "internalType": "bytes"
+            "name": "batchId",
+            "type": "bytes32",
+            "internalType": "bytes32"
           },
           {
             "name": "deadline",
             "type": "uint256",
             "internalType": "uint256"
-          },
-          {
-            "name": "blockSubmitted",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "selectedOperators",
-            "type": "address[]",
-            "internalType": "address[]"
           },
           {
             "name": "status",
@@ -464,40 +296,27 @@
   },
   {
     "type": "function",
-    "name": "latestTaskNum",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "processUEI",
     "inputs": [
       {
-        "name": "intentId",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        "name": "intentIds",
+        "type": "bytes32[]",
+        "internalType": "bytes32[]"
       },
       {
-        "name": "decoder",
-        "type": "address",
-        "internalType": "address"
+        "name": "decoders",
+        "type": "address[]",
+        "internalType": "address[]"
       },
       {
-        "name": "target",
-        "type": "address",
-        "internalType": "address"
+        "name": "targets",
+        "type": "address[]",
+        "internalType": "address[]"
       },
       {
         "name": "reconstructedData",
-        "type": "bytes",
-        "internalType": "bytes"
+        "type": "bytes[]",
+        "internalType": "bytes[]"
       },
       {
         "name": "operatorSignatures",
@@ -517,111 +336,6 @@
   },
   {
     "type": "function",
-    "name": "respondToSwapTask",
-    "inputs": [
-      {
-        "name": "task",
-        "type": "tuple",
-        "internalType": "struct ISwapManager.SwapTask",
-        "components": [
-          {
-            "name": "hook",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "user",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "tokenIn",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "tokenOut",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "encryptedAmount",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "deadline",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "taskCreatedBlock",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "selectedOperators",
-            "type": "address[]",
-            "internalType": "address[]"
-          }
-        ]
-      },
-      {
-        "name": "referenceTaskIndex",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "decryptedAmount",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "signature",
-        "type": "bytes",
-        "internalType": "bytes"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "respondToTask",
-    "inputs": [
-      {
-        "name": "task",
-        "type": "tuple",
-        "internalType": "struct ISwapManager.Task",
-        "components": [
-          {
-            "name": "name",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "taskCreatedBlock",
-            "type": "uint32",
-            "internalType": "uint32"
-          }
-        ]
-      },
-      {
-        "name": "referenceTaskIndex",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "signature",
-        "type": "bytes",
-        "internalType": "bytes"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "setBoringVault",
     "inputs": [
       {
@@ -635,238 +349,29 @@
   },
   {
     "type": "function",
-    "name": "slashOperator",
+    "name": "submitEncryptedUEIBatch",
     "inputs": [
       {
-        "name": "task",
-        "type": "tuple",
-        "internalType": "struct ISwapManager.Task",
-        "components": [
-          {
-            "name": "name",
-            "type": "string",
-            "internalType": "string"
-          },
-          {
-            "name": "taskCreatedBlock",
-            "type": "uint32",
-            "internalType": "uint32"
-          }
-        ]
-      },
-      {
-        "name": "referenceTaskIndex",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "operator",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "slashOperator",
-    "inputs": [
-      {
-        "name": "task",
-        "type": "tuple",
-        "internalType": "struct ISwapManager.SwapTask",
-        "components": [
-          {
-            "name": "hook",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "user",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "tokenIn",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "tokenOut",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "encryptedAmount",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "deadline",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "taskCreatedBlock",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "selectedOperators",
-            "type": "address[]",
-            "internalType": "address[]"
-          }
-        ]
-      },
-      {
-        "name": "referenceTaskIndex",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "operator",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "submitBatchSettlement",
-    "inputs": [
-      {
-        "name": "settlement",
-        "type": "tuple",
-        "internalType": "struct ISwapManager.BatchSettlement",
-        "components": [
-          {
-            "name": "batchId",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "internalizedTransfers",
-            "type": "tuple[]",
-            "internalType": "struct ISwapManager.TokenTransfer[]",
-            "components": [
-              {
-                "name": "intentIdA",
-                "type": "bytes32",
-                "internalType": "bytes32"
-              },
-              {
-                "name": "intentIdB",
-                "type": "bytes32",
-                "internalType": "bytes32"
-              },
-              {
-                "name": "userA",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
-                "name": "userB",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
-                "name": "tokenA",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
-                "name": "tokenB",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
-                "name": "encryptedAmountA",
-                "type": "bytes",
-                "internalType": "bytes"
-              },
-              {
-                "name": "encryptedAmountB",
-                "type": "bytes",
-                "internalType": "bytes"
-              }
-            ]
-          },
-          {
-            "name": "netSwap",
-            "type": "tuple",
-            "internalType": "struct ISwapManager.NetSwap",
-            "components": [
-              {
-                "name": "tokenIn",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
-                "name": "tokenOut",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
-                "name": "netAmount",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
-                "name": "remainingIntents",
-                "type": "bytes32[]",
-                "internalType": "bytes32[]"
-              }
-            ]
-          },
-          {
-            "name": "hasNetSwap",
-            "type": "bool",
-            "internalType": "bool"
-          },
-          {
-            "name": "totalInternalized",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "totalNet",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
-      },
-      {
-        "name": "operatorSignatures",
+        "name": "ctBlobs",
         "type": "bytes[]",
         "internalType": "bytes[]"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "submitUEI",
-    "inputs": [
-      {
-        "name": "ctBlob",
-        "type": "bytes",
-        "internalType": "bytes"
       },
       {
-        "name": "deadline",
-        "type": "uint256",
-        "internalType": "uint256"
+        "name": "inputProofs",
+        "type": "bytes[]",
+        "internalType": "bytes[]"
+      },
+      {
+        "name": "deadlines",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
       }
     ],
     "outputs": [
       {
-        "name": "intentId",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        "name": "intentIds",
+        "type": "bytes32[]",
+        "internalType": "bytes32[]"
       }
     ],
     "stateMutability": "nonpayable"
@@ -949,67 +454,6 @@
   },
   {
     "type": "event",
-    "name": "NewSwapTaskCreated",
-    "inputs": [
-      {
-        "name": "taskIndex",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "task",
-        "type": "tuple",
-        "indexed": false,
-        "internalType": "struct ISwapManager.SwapTask",
-        "components": [
-          {
-            "name": "hook",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "user",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "tokenIn",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "tokenOut",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "encryptedAmount",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "deadline",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "taskCreatedBlock",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "selectedOperators",
-            "type": "address[]",
-            "internalType": "address[]"
-          }
-        ]
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "OperatorSelectedForBatch",
     "inputs": [
       {
@@ -1029,70 +473,59 @@
   },
   {
     "type": "event",
-    "name": "SwapTaskResponded",
+    "name": "TradeSubmitted",
     "inputs": [
       {
-        "name": "taskIndex",
-        "type": "uint32",
+        "name": "tradeId",
+        "type": "bytes32",
         "indexed": true,
-        "internalType": "uint32"
+        "internalType": "bytes32"
       },
       {
-        "name": "task",
-        "type": "tuple",
-        "indexed": false,
-        "internalType": "struct ISwapManager.SwapTask",
-        "components": [
-          {
-            "name": "hook",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "user",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "tokenIn",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "tokenOut",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "encryptedAmount",
-            "type": "bytes",
-            "internalType": "bytes"
-          },
-          {
-            "name": "deadline",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "taskCreatedBlock",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "selectedOperators",
-            "type": "address[]",
-            "internalType": "address[]"
-          }
-        ]
-      },
-      {
-        "name": "operator",
+        "name": "submitter",
         "type": "address",
-        "indexed": false,
+        "indexed": true,
         "internalType": "address"
       },
       {
-        "name": "decryptedAmount",
+        "name": "batchId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "ctBlob",
+        "type": "bytes",
+        "indexed": false,
+        "internalType": "bytes"
+      },
+      {
+        "name": "deadline",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "UEIBatchFinalized",
+    "inputs": [
+      {
+        "name": "batchId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "selectedOperators",
+        "type": "address[]",
+        "indexed": false,
+        "internalType": "address[]"
+      },
+      {
+        "name": "finalizedAt",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -1121,43 +554,6 @@
         "type": "bytes",
         "indexed": false,
         "internalType": "bytes"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "UEISubmitted",
-    "inputs": [
-      {
-        "name": "intentId",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "submitter",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "ctBlob",
-        "type": "bytes",
-        "indexed": false,
-        "internalType": "bytes"
-      },
-      {
-        "name": "deadline",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "selectedOperators",
-        "type": "address[]",
-        "indexed": false,
-        "internalType": "address[]"
       }
     ],
     "anonymous": false

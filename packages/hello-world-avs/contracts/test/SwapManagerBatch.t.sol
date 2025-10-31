@@ -386,13 +386,21 @@ contract SwapManagerBatchTest is Test {
             bytes32(uint256(1)), // encDecoder
             bytes32(uint256(2)), // encTarget
             bytes32(uint256(3)), // encSelector
+            bytes32(uint256(4)), // encChainId
             new bytes32[](0)     // encArgs (all as euint256)
         );
         uint256 deadline = block.timestamp + 1 hours;
 
         // Users submit directly (not hooks)
         vm.prank(user1);
-        bytes32 intentId = swapManager.submitEncryptedUEI(ctBlob, "", deadline);
+        bytes[] memory blobs = new bytes[](1);
+        blobs[0] = ctBlob;
+        bytes[] memory proofs = new bytes[](1);
+        proofs[0] = "";
+        uint256[] memory deadlines = new uint256[](1);
+        deadlines[0] = deadline;
+        bytes32[] memory intentIds = swapManager.submitEncryptedUEIBatch(blobs, proofs, deadlines);
+        bytes32 intentId = intentIds[0];
 
         // Verify intent was created
         assertTrue(intentId != bytes32(0));
@@ -417,12 +425,20 @@ contract SwapManagerBatchTest is Test {
             bytes32(uint256(1)),
             bytes32(uint256(2)),
             bytes32(uint256(3)),
+            bytes32(uint256(4)),
             new bytes32[](0)  // encArgs (all as euint256)
         );
         uint256 deadline = block.timestamp + 1 hours;
 
         vm.prank(user1);
-        bytes32 intentId = swapManager.submitEncryptedUEI(ctBlob, "", deadline);
+        bytes[] memory blobs = new bytes[](1);
+        blobs[0] = ctBlob;
+        bytes[] memory proofs = new bytes[](1);
+        proofs[0] = "";
+        uint256[] memory deadlines = new uint256[](1);
+        deadlines[0] = deadline;
+        bytes32[] memory createdIds = swapManager.submitEncryptedUEIBatch(blobs, proofs, deadlines);
+        bytes32 intentId = createdIds[0];
 
         // Finalize the batch first to select operators
         vm.warp(block.timestamp + 11 minutes); // Past MAX_BATCH_IDLE
@@ -439,17 +455,23 @@ contract SwapManagerBatchTest is Test {
         else if (selectedOp == operator2) operatorPk = 3;
         else if (selectedOp == operator3) operatorPk = 4;
 
-        // Prepare process data
-        address decoder = address(0x100);
-        address target = address(0x200);
-        bytes memory reconstructedData = "0x12345678";
+        // Prepare process data arrays (must mirror contract hashing)
+        bytes32[] memory intentIdArr = new bytes32[](1);
+        intentIdArr[0] = intentId;
+        address[] memory decodersArr = new address[](1);
+        decodersArr[0] = address(0x100);
+        address[] memory targetsArr = new address[](1);
+        targetsArr[0] = address(0x200);
+        bytes[] memory calldataArr = new bytes[](1);
+        calldataArr[0] = hex"12345678";
 
-        // Create operator signature from selected operator
-        bytes32 dataHash = keccak256(abi.encode(intentId, decoder, target, reconstructedData));
-        bytes32 ethSigned = keccak256(abi.encodePacked(
-            "\x19Ethereum Signed Message:\n32",
-            dataHash
-        ));
+        // Create operator signature using contract's aggregation hash
+        bytes32 dataHash = keccak256(
+            abi.encode(task.batchId, intentIdArr, decodersArr, targetsArr, calldataArr)
+        );
+        bytes32 ethSigned = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", dataHash)
+        );
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(operatorPk, ethSigned);
         bytes[] memory signatures = new bytes[](1);
@@ -457,13 +479,12 @@ contract SwapManagerBatchTest is Test {
 
         // Process UEI from the selected operator
         vm.prank(selectedOp);
-        swapManager.processUEI(intentId, decoder, target, reconstructedData, signatures);
+        swapManager.processUEI(intentIdArr, decodersArr, targetsArr, calldataArr, signatures);
 
         // Verify execution
         ISwapManager.UEIExecution memory execution = swapManager.getUEIExecution(intentId);
-        assertEq(execution.decoder, decoder);
-        assertEq(execution.target, target);
         assertEq(execution.executor, selectedOp);
+        assertTrue(execution.success);
     }
 
     function testProcessUEIRevertsIfNotSelected() public {
@@ -472,11 +493,19 @@ contract SwapManagerBatchTest is Test {
             bytes32(uint256(1)),
             bytes32(uint256(2)),
             bytes32(uint256(3)),
+            bytes32(uint256(4)),
             new bytes32[](0)  // encArgs (all as euint256)
         );
 
         vm.prank(user1);
-        bytes32 intentId = swapManager.submitEncryptedUEI(ctBlob, "", block.timestamp + 1 hours);
+        bytes[] memory blobs = new bytes[](1);
+        blobs[0] = ctBlob;
+        bytes[] memory proofs = new bytes[](1);
+        proofs[0] = "";
+        uint256[] memory deadlines = new uint256[](1);
+        deadlines[0] = block.timestamp + 1 hours;
+        bytes32[] memory intentIds = swapManager.submitEncryptedUEIBatch(blobs, proofs, deadlines);
+        bytes32 intentId = intentIds[0];
 
         // Finalize batch to select operators
         vm.warp(block.timestamp + 11 minutes);
@@ -486,7 +515,14 @@ contract SwapManagerBatchTest is Test {
         address notSelectedOperator = address(0x999);
         vm.prank(notSelectedOperator);
         vm.expectRevert("Operator must be the caller");
-        swapManager.processUEI(intentId, address(0x100), address(0x200), "", new bytes[](0));
+        bytes32[] memory intentIdArr = new bytes32[](1);
+        intentIdArr[0] = intentId;
+        address[] memory decodersArr = new address[](0);
+        address[] memory targetsArr = new address[](1);
+        targetsArr[0] = address(0x200);
+        bytes[] memory calldataArr = new bytes[](1);
+        calldataArr[0] = "";
+        swapManager.processUEI(intentIdArr, decodersArr, targetsArr, calldataArr, new bytes[](0));
     }
 
     function testSubmitEncryptedUEIBatchCreatesSeparateTasks() public {
@@ -495,12 +531,14 @@ contract SwapManagerBatchTest is Test {
             bytes32(uint256(11)),
             bytes32(uint256(12)),
             bytes32(uint256(13)),
+            bytes32(uint256(14)),
             new bytes32[](0)
         );
         ctBlobs[1] = abi.encode(
             bytes32(uint256(21)),
             bytes32(uint256(22)),
             bytes32(uint256(23)),
+            bytes32(uint256(24)),
             new bytes32[](0)
         );
 
@@ -536,12 +574,14 @@ contract SwapManagerBatchTest is Test {
             bytes32(uint256(31)),
             bytes32(uint256(32)),
             bytes32(uint256(33)),
+            bytes32(uint256(34)),
             new bytes32[](0)
         );
         ctBlobs[1] = abi.encode(
             bytes32(uint256(41)),
             bytes32(uint256(42)),
             bytes32(uint256(43)),
+            bytes32(uint256(44)),
             new bytes32[](0)
         );
 
@@ -597,9 +637,7 @@ contract SwapManagerBatchTest is Test {
             ISwapManager.UEIExecution memory execution = swapManager.getUEIExecution(aggregatedIntentIds[i]);
             assertTrue(execution.success);
             assertEq(execution.executor, selectedOp);
-
-            bytes[] memory decodedResults = abi.decode(execution.result, (bytes[]));
-            assertEq(decodedResults.length, targets.length);
+            assertEq(execution.result.length, 0);
         }
     }
 }

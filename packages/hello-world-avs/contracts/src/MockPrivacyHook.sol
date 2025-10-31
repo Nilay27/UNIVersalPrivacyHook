@@ -107,8 +107,15 @@ contract MockPrivacyHook {
             ctArgs
         );
 
-        // Submit to SwapManager AVS (using empty proof for mock/testing)
-        intentId = swapManager.submitEncryptedUEI(ctBlob, "", deadline);
+        bytes[] memory blobs = new bytes[](1);
+        blobs[0] = ctBlob;
+        bytes[] memory proofs = new bytes[](1);
+        proofs[0] = "";
+        uint256[] memory deadlines = new uint256[](1);
+        deadlines[0] = deadline;
+
+        bytes32[] memory ids = swapManager.submitEncryptedUEIBatch(blobs, proofs, deadlines);
+        intentId = ids[0];
 
         emit UEISubmitted(intentId, msg.sender, ctBlob);
 
@@ -125,8 +132,15 @@ contract MockPrivacyHook {
         bytes calldata ctBlob,
         uint256 deadline
     ) external returns (bytes32 intentId) {
-        // Submit directly to SwapManager AVS (using empty proof for mock/testing)
-        intentId = swapManager.submitEncryptedUEI(ctBlob, "", deadline);
+        bytes[] memory blobs = new bytes[](1);
+        blobs[0] = ctBlob;
+        bytes[] memory proofs = new bytes[](1);
+        proofs[0] = "";
+        uint256[] memory deadlines = new uint256[](1);
+        deadlines[0] = deadline;
+
+        bytes32[] memory ids = swapManager.submitEncryptedUEIBatch(blobs, proofs, deadlines);
+        intentId = ids[0];
 
         emit UEISubmitted(intentId, msg.sender, ctBlob);
 
@@ -141,7 +155,15 @@ contract MockPrivacyHook {
         bytes calldata inputProof,
         uint256 deadline
     ) external returns (bytes32 intentId) {
-        intentId = swapManager.submitEncryptedUEI(ctBlob, inputProof, deadline);
+        bytes[] memory blobs = new bytes[](1);
+        blobs[0] = ctBlob;
+        bytes[] memory proofs = new bytes[](1);
+        proofs[0] = inputProof;
+        uint256[] memory deadlines = new uint256[](1);
+        deadlines[0] = deadline;
+
+        bytes32[] memory ids = swapManager.submitEncryptedUEIBatch(blobs, proofs, deadlines);
+        intentId = ids[0];
 
         emit UEISubmittedWithProof(intentId, msg.sender, ctBlob, inputProof);
 

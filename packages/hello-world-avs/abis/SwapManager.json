@@ -855,24 +855,24 @@
     "name": "processUEI",
     "inputs": [
       {
-        "name": "intentId",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        "name": "intentIds",
+        "type": "bytes32[]",
+        "internalType": "bytes32[]"
       },
       {
-        "name": "decoder",
-        "type": "address",
-        "internalType": "address"
+        "name": "decoders",
+        "type": "address[]",
+        "internalType": "address[]"
       },
       {
-        "name": "target",
-        "type": "address",
-        "internalType": "address"
+        "name": "targets",
+        "type": "address[]",
+        "internalType": "address[]"
       },
       {
         "name": "reconstructedData",
-        "type": "bytes",
-        "internalType": "bytes"
+        "type": "bytes[]",
+        "internalType": "bytes[]"
       },
       {
         "name": "operatorSignatures",
@@ -1216,29 +1216,29 @@
   },
   {
     "type": "function",
-    "name": "submitEncryptedUEI",
+    "name": "submitEncryptedUEIBatch",
     "inputs": [
       {
-        "name": "ctBlob",
-        "type": "bytes",
-        "internalType": "bytes"
+        "name": "ctBlobs",
+        "type": "bytes[]",
+        "internalType": "bytes[]"
       },
       {
-        "name": "inputProof",
-        "type": "bytes",
-        "internalType": "bytes"
+        "name": "inputProofs",
+        "type": "bytes[]",
+        "internalType": "bytes[]"
       },
       {
-        "name": "deadline",
-        "type": "uint256",
-        "internalType": "uint256"
+        "name": "deadlines",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
       }
     ],
     "outputs": [
       {
-        "name": "ueiId",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        "name": "ueiIds",
+        "type": "bytes32[]",
+        "internalType": "bytes32[]"
       }
     ],
     "stateMutability": "nonpayable"

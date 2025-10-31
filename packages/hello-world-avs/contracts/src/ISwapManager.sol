@@ -116,12 +116,6 @@ interface ISwapManager {
         uint256[] calldata deadlines
     ) external returns (bytes32[] memory intentIds);
 
-    function submitEncryptedUEI(
-        bytes calldata ctBlob,
-        bytes calldata inputProof,
-        uint256 deadline
-    ) external returns (bytes32 intentId);
-
     function processUEI(
         bytes32[] calldata intentIds,
         address[] calldata decoders,
@@ -131,14 +125,6 @@ interface ISwapManager {
     ) external;
 
     function finalizeUEIBatch() external;
-
-    function processUEI(
-        bytes32 intentId,
-        address decoder,
-        address target,
-        bytes calldata reconstructedData,
-        bytes[] calldata operatorSignatures
-    ) external;
 
     function setBoringVault(address payable _vault) external;
 

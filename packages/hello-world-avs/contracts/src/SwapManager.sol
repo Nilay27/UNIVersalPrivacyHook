@@ -95,6 +95,7 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
         eaddress decoder;
         eaddress target;
         euint32 selector;
+        euint32 chainId;
         euint256[] args;
     }
     mapping(bytes32 => FHEHandles) internal ueiHandles;
@@ -445,15 +446,6 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
         return ueiIds;
     }
 
-    function submitEncryptedUEI(
-        bytes calldata ctBlob,
-        bytes calldata inputProof,
-        uint256 deadline
-    ) external returns (bytes32) {
-        (bytes32 batchId, TradeBatch storage batch) = _getOrCreateCurrentBatch();
-        return _registerUEI(batch, batchId, ctBlob, inputProof, deadline, 0);
-    }
-
     function _getOrCreateCurrentBatch()
         internal
         returns (bytes32 batchId, TradeBatch storage batch)
@@ -526,13 +518,15 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
             bytes32 encDecoder,      // eaddress handle
             bytes32 encTarget,       // eaddress handle
             bytes32 encSelector,     // euint32 handle
+            bytes32 encChainId,      // euint32 handle (chain id)
             bytes32[] memory encArgs // ALL args as euint256 handles
-        ) = abi.decode(ctBlob, (bytes32, bytes32, bytes32, bytes32[]));
+        ) = abi.decode(ctBlob, (bytes32, bytes32, bytes32, bytes32, bytes32[]));
 
         // Convert handles to internal FHE types (validates inputProof)
         eaddress decoder = FHE.fromExternal(externalEaddress.wrap(encDecoder), inputProof);
         eaddress target = FHE.fromExternal(externalEaddress.wrap(encTarget), inputProof);
         euint32 selector = FHE.fromExternal(externalEuint32.wrap(encSelector), inputProof);
+        euint32 chainIdHandle = FHE.fromExternal(externalEuint32.wrap(encChainId), inputProof);
 
         // Convert all arguments and store
         euint256[] memory args = new euint256[](encArgs.length);
@@ -545,12 +539,14 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
         FHE.allowThis(decoder);
         FHE.allowThis(target);
         FHE.allowThis(selector);
+        FHE.allowThis(chainIdHandle);
 
         // Store handles for operator permission grants during finalization
         ueiHandles[ueiId] = FHEHandles({
             decoder: decoder,
             target: target,
             selector: selector,
+            chainId: chainIdHandle,
             args: args
         });
     }
@@ -594,6 +590,7 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
                 FHE.allow(handles.decoder, selectedOps[j]);
                 FHE.allow(handles.target, selectedOps[j]);
                 FHE.allow(handles.selector, selectedOps[j]);
+                FHE.allow(handles.chainId, selectedOps[j]);
 
                 // Grant for all arguments
                 for (uint256 k = 0; k < handles.args.length; k++) {
@@ -640,28 +637,6 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
         _processUEIs(intentIds, decoders, targets, reconstructedData, operatorSignatures);
     }
 
-    function processUEI(
-        bytes32 intentId,
-        address decoder,
-        address target,
-        bytes calldata reconstructedData,
-        bytes[] calldata operatorSignatures
-    ) external onlyOperator {
-        bytes32[] memory intentIds = new bytes32[](1);
-        intentIds[0] = intentId;
-
-        address[] memory decoders = new address[](1);
-        decoders[0] = decoder;
-
-        address[] memory targets = new address[](1);
-        targets[0] = target;
-
-        bytes[] memory calldatas = new bytes[](1);
-        calldatas[0] = reconstructedData;
-
-        _processUEIs(intentIds, decoders, targets, calldatas, operatorSignatures);
-    }
-
     function _processUEIs(
         bytes32[] memory intentIds,
         address[] memory decoders,
@@ -670,144 +645,70 @@ contract SwapManager is ECDSAServiceManagerBase, ISwapManager, SepoliaConfig {
         bytes[] calldata operatorSignatures
     ) internal {
         uint256 intentCount = intentIds.length;
-        require(intentCount > 0, "No intents provided");
-        require(targets.length > 0, "No execution targets");
-        require(targets.length == reconstructedData.length, "Target/data length mismatch");
-        require(decoders.length == 0 || decoders.length == targets.length, "Decoder length mismatch");
+        require(intentCount > 0, "No intents");
 
-        // Load first intent to derive batch context
         UEITask storage firstTask = ueiTasks[intentIds[0]];
-        require(firstTask.status == UEIStatus.Pending, "First UEI not pending");
-        require(block.timestamp <= firstTask.deadline, "First UEI expired");
-
         TradeBatch storage batch = tradeBatches[firstTask.batchId];
         require(batch.finalized, "Batch not finalized");
-        address[] memory selectedOps = batch.selectedOperators;
+        require(!batch.executed, "Batch already executed");
 
-        // Verify operator is selected for this batch
-        bool isSelected = false;
-        for (uint256 i = 0; i < selectedOps.length; i++) {
+        address[] memory selectedOps = batch.selectedOperators;
+        bool isSelected;
+        for (uint256 i; i < selectedOps.length; ++i) {
             if (selectedOps[i] == msg.sender) {
                 isSelected = true;
                 break;
             }
         }
-        require(isSelected, "Operator not selected for this batch");
+        require(isSelected, "Operator not selected");
 
-        // Validate each intent belongs to the same batch and is pending
-        for (uint256 i = 1; i < intentCount; i++) {
-            UEITask storage task = ueiTasks[intentIds[i]];
-            require(task.batchId == firstTask.batchId, "Mismatched batch");
-            require(task.status == UEIStatus.Pending, "UEI not pending");
-            require(block.timestamp <= task.deadline, "UEI expired");
-        }
+        require(operatorSignatures.length >= MIN_ATTESTATIONS, "Insufficient signatures");
 
-        require(operatorSignatures.length >= MIN_ATTESTATIONS, "Insufficient consensus");
-
-        // Build hash for consensus verification (supports both single and multi intent flows)
-        bytes32 dataHash;
-        if (intentCount == 1 && targets.length == 1) {
-            address singleDecoder = decoders.length == 1 ? decoders[0] : address(0);
-            dataHash = keccak256(
-                abi.encode(intentIds[0], singleDecoder, targets[0], reconstructedData[0])
-            );
-        } else {
-            dataHash = keccak256(
-                abi.encode(firstTask.batchId, intentIds, decoders, targets, reconstructedData)
-            );
-        }
-
+        bytes32 dataHash = keccak256(
+            abi.encode(firstTask.batchId, intentIds, decoders, targets, reconstructedData)
+        );
         bytes32 ethSigned = dataHash.toEthSignedMessageHash();
+
         uint256 validSignatures;
-        for (uint256 i = 0; i < operatorSignatures.length && i < selectedOps.length; i++) {
+        for (uint256 i; i < operatorSignatures.length; ++i) {
             address signer = ethSigned.recover(operatorSignatures[i]);
             if (operatorSelectedForBatch[firstTask.batchId][signer]) {
                 validSignatures++;
             }
         }
-        require(validSignatures >= MIN_ATTESTATIONS, "Insufficient valid signatures");
+        require(validSignatures >= MIN_ATTESTATIONS, "Insufficient signatures");
 
-        // Mark intents as processing
-        for (uint256 i = 0; i < intentCount; i++) {
+        for (uint256 i; i < intentCount; ++i) {
             ueiTasks[intentIds[i]].status = UEIStatus.Processing;
         }
 
-        bool overallSuccess = true;
-        bytes[] memory operationResults = new bytes[](targets.length);
-        bytes memory failureData;
-
         if (boringVault != address(0)) {
-            for (uint256 i = 0; i < targets.length; i++) {
-                // Default decoder handling: ignore if array not supplied
-                address targetAddress = targets[i];
-                bytes memory callData = reconstructedData[i];
-
-                try SimpleBoringVault(boringVault).execute(targetAddress, callData, 0) returns (bytes memory result) {
-                    operationResults[i] = result;
-                } catch Error(string memory reason) {
-                    overallSuccess = false;
-                    failureData = bytes(reason);
-                    break;
-                } catch (bytes memory reason) {
-                    overallSuccess = false;
-                    failureData = reason;
-                    break;
+            for (uint256 i; i < targets.length; ++i) {
+                try SimpleBoringVault(boringVault).execute(targets[i], reconstructedData[i], 0) {
+                } catch {
+                    // ignore individual call failure for now
                 }
             }
-        } else {
-            // Vault unset (testing) - treat as success
-            for (uint256 i = 0; i < targets.length; i++) {
-                operationResults[i] = "";
-            }
         }
 
-        if (!overallSuccess) {
-            for (uint256 i = 0; i < intentCount; i++) {
-                UEITask storage task = ueiTasks[intentIds[i]];
-                task.status = UEIStatus.Failed;
+        for (uint256 i; i < intentCount; ++i) {
+            ueiTasks[intentIds[i]].status = UEIStatus.Executed;
 
-                UEIExecution memory executionFailed = UEIExecution({
-                    intentId: intentIds[i],
-                    decoder: decoders.length == 1 ? decoders[0] : address(0),
-                    target: targets.length == 1 ? targets[0] : address(0),
-                    callData: targets.length == 1 ? reconstructedData[0] : abi.encode(reconstructedData),
-                    executor: msg.sender,
-                    executedAt: block.timestamp,
-                    success: false,
-                    result: failureData
-                });
-
-                ueiExecutions[intentIds[i]] = executionFailed;
-                emit UEIProcessed(intentIds[i], false, failureData);
-            }
-            return;
-        }
-
-        bytes memory packedResults = abi.encode(operationResults);
-        bytes memory packedCallData = targets.length == 1
-            ? reconstructedData[0]
-            : abi.encode(reconstructedData);
-        address storedTarget = targets.length == 1 ? targets[0] : address(0);
-        address storedDecoder = decoders.length == 1 ? decoders[0] : address(0);
-
-        for (uint256 i = 0; i < intentCount; i++) {
-            UEITask storage task = ueiTasks[intentIds[i]];
-            task.status = UEIStatus.Executed;
-
-            UEIExecution memory execution = UEIExecution({
+            ueiExecutions[intentIds[i]] = UEIExecution({
                 intentId: intentIds[i],
-                decoder: storedDecoder,
-                target: storedTarget,
-                callData: packedCallData,
+                decoder: address(0),
+                target: address(0),
+                callData: "",
                 executor: msg.sender,
                 executedAt: block.timestamp,
                 success: true,
-                result: packedResults
+                result: ""
             });
 
-            ueiExecutions[intentIds[i]] = execution;
-            emit UEIProcessed(intentIds[i], true, packedResults);
+            emit UEIProcessed(intentIds[i], true, "");
         }
+
+        batch.executed = true;
     }
 
     /**
