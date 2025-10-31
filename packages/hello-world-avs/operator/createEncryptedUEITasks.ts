@@ -13,16 +13,17 @@ import { ethers } from 'ethers';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import { createInstance, SepoliaConfig } from '@zama-fhe/relayer-sdk/node';
+import { CHAIN_DEPLOYMENTS } from './config/chains';
+import { PROTOCOL_FUNCTIONS } from './utils';
 
 dotenv.config();
 
 const PROVIDER_URL = process.env.RPC_URL || 'https://sepolia.infura.io/v3/YOUR_KEY';
 const PRIVATE_KEY = process.env.PRIVATE_KEY || '';
 
-// Sepolia testnet addresses
-const SWAP_MANAGER = '0x04452661c2F3f91594eD5E7ab341281a2E1A04b4';
-const BORING_VAULT = '0x1B7Bbc206Fc58413dCcDC9A4Ad1c5a95995a3926';
-const USDC_SEPOLIA = '0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1'; // Sepolia USDC
+const DEFAULT_SWAP_MANAGER = '0x892c61920D2c8B8C94482b75e7044484dBFd75d4';
+const DEFAULT_BORING_VAULT = '0x1B7Bbc206Fc58413dCcDC9A4Ad1c5a95995a3926';
+const DEFAULT_USDC = '0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1'; // Sepolia USDC fallback
 
 // Mock decoder for ERC20 transfers (for testing - in production would be verified via merkle tree)
 // Using a valid address format - decoder validation will be added with merkle tree in BoringVault
@@ -119,7 +120,7 @@ async function batchEncryptUEIComponents(
  */
 async function createUSDCTransferUEI() {
     try {
-        console.log("\n🚀 Creating USDC Transfer UEIs\n");
+        console.log("\n🚀 Creating Sample UEIs\n");
         console.log("=".repeat(60));
 
         // Setup provider and wallet
@@ -128,25 +129,55 @@ async function createUSDCTransferUEI() {
         const network = await provider.getNetwork();
         const chainId = Number(network.chainId);
 
+        const chainDeployment = CHAIN_DEPLOYMENTS[
+            chainId as keyof typeof CHAIN_DEPLOYMENTS
+        ];
+        if (!chainDeployment) {
+            throw new Error(`No chain deployment metadata found for chainId ${chainId}`);
+        }
+
+        const swapManagerAddress = chainDeployment.swapManager ?? DEFAULT_SWAP_MANAGER;
+        const boringVaultAddress = chainDeployment.boringVault ?? DEFAULT_BORING_VAULT;
+        const usdcAddress = chainDeployment.tokens?.USDC ?? DEFAULT_USDC;
+        const ptEusdeAddress = chainDeployment.tokens?.PT_eUSDE;
+        const aaveAddress = chainDeployment.protocols?.aave;
+        if (!aaveAddress) {
+            throw new Error("Aave protocol address missing from chain deployment metadata");
+        }
+        if (!ptEusdeAddress) {
+            throw new Error("PT_eUSDE token address missing from chain deployment metadata");
+        }
+
+        const aaveSupplyFn = PROTOCOL_FUNCTIONS.find(
+            (fn) => fn.protocol === "aave" && fn.functionName === "supply"
+        );
+        if (!aaveSupplyFn) {
+            throw new Error("Unable to locate AAVE supply function metadata");
+        }
+        const aaveSupplySelector = aaveSupplyFn.selector;
+
         console.log("👤 Submitter wallet:", wallet.address);
-        console.log("💰 Boring Vault:", BORING_VAULT);
-        console.log("🏦 SwapManager:", SWAP_MANAGER);
-        console.log("💵 USDC:", USDC_SEPOLIA);
+        console.log("💰 Boring Vault:", boringVaultAddress);
+        console.log("🏦 SwapManager:", swapManagerAddress);
+        console.log("💵 USDC:", usdcAddress);
+        console.log("📦 PT-eUSDE:", ptEusdeAddress);
+        console.log("🏦 Aave Pool:", aaveAddress);
+        console.log("🌐 ChainId:", chainId);
 
         // Load SwapManager ABI
         const swapManagerAbi = JSON.parse(
             fs.readFileSync('./abis/SwapManager.json', 'utf8')
         );
-        const swapManager = new ethers.Contract(SWAP_MANAGER, swapManagerAbi, wallet);
+        const swapManager = new ethers.Contract(swapManagerAddress, swapManagerAbi, wallet);
 
         // Simple USDC transfer parameters
         // transfer(address to, uint256 amount)
         const transferSelector = '0xa9059cbb'; // transfer function selector
         const recipient = wallet.address; // Transfer to deployer for testing
-        const amount = ethers.parseUnits('100', 6); // 100 USDC (6 decimals)
+        const amount = ethers.parseUnits('100', 6); // 100 tokens (6 decimals)
 
         console.log("\n📋 Transfer Details:");
-        console.log(`  From: ${BORING_VAULT} (BoringVault)`);
+        console.log(`  From: ${boringVaultAddress} (BoringVault)`);
         console.log(`  To: ${recipient}`);
         console.log(`  Amount: ${ethers.formatUnits(amount, 6)} USDC`);
         console.log(`  Selector: ${transferSelector}`);
@@ -159,7 +190,7 @@ async function createUSDCTransferUEI() {
             {
                 description: "Transfer 100 USDC back to the submitter",
                 decoder: MOCK_ERC20_DECODER,
-                target: USDC_SEPOLIA,
+                target: usdcAddress,
                 selector: transferSelector,
                 args: [
                     BigInt(recipient),
@@ -167,13 +198,15 @@ async function createUSDCTransferUEI() {
                 ]
             },
             {
-                description: "Transfer 50 USDC to the boring vault (demo aggregated intent)",
+                description: "Supply 100 PT-eUSDE to Aave on behalf of the boring vault",
                 decoder: MOCK_ERC20_DECODER,
-                target: USDC_SEPOLIA,
-                selector: transferSelector,
+                target: aaveAddress,
+                selector: aaveSupplySelector,
                 args: [
-                    BigInt(recipient),
-                    ethers.parseUnits('50', 6)
+                    BigInt(ptEusdeAddress),
+                    amount,
+                    BigInt(boringVaultAddress),
+                    0n
                 ]
             }
         ];
@@ -195,7 +228,7 @@ async function createUSDCTransferUEI() {
                 template.selector,
                 chainId,
                 template.args,
-                SWAP_MANAGER,
+                swapManagerAddress,
                 wallet.address
             );
 

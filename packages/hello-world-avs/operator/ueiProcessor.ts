@@ -36,7 +36,7 @@ const PRIVATE_KEY = process.env.PRIVATE_KEY || '';
 registerConfiguredProtocolTargets();
 
 // Deployed contract addresses
-const SWAP_MANAGER = '0x04452661c2F3f91594eD5E7ab341281a2E1A04b4';
+const SWAP_MANAGER = '0x892c61920D2c8B8C94482b75e7044484dBFd75d4';
 const BORING_VAULT = '0x1B7Bbc206Fc58413dCcDC9A4Ad1c5a95995a3926';
 
 // FHEVM instance for decryption

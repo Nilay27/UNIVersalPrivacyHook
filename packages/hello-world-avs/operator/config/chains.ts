@@ -39,14 +39,21 @@ export const CHAIN_DEPLOYMENTS: Record<ChainIdLiteral, ChainDeployment> = {
         tokens: {
             USDC: "0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1",
             USDT: "0xB1D9519e953B8513a4754f9B33d37eDba90c001D",
+            PT_eUSDE: "0xfD3e5E9185f6a3aa32edEAD5974BDDBbf28F4af1",
+            PT_sUSDE: "0x9a97e4D94dB48dC4b9cAB30Da5f45d4DD8b73AE4",
+            PT_USR: "0x59B016C0c8Ad39672c5C27363ADef8Cae4dA2Cdc",
         },
         protocols: {
-            // Populate with deployed protocol entry points on Sepolia
+            pendle: "0x5b74d9186EEAf2b517EBe626cdDbe46C49B77Eb5",
+            aave: "0x94cD44b66E5E64045F1075dB6eF42af383108e87",
+            morpho: "0x4995F1aaA2E74EF7b28C9D5f14eC4A026B46Cc76",
         },
         markets: {
-            // Populate if markets are required for logging/UI
+            PT_eUSDE: "0x757f4cAf00AFcd41F8389Eb5dE4a8a737a262D45",
+            PT_sUSDE: "0xfeCb7785CA797A709095F4146140329fCf970FE8",
+            PT_USR: "0xB909F6b859910ad59D2F4003cd8610Af4fa41Fef",
         },
-        swapManager: "0x04452661c2F3f91594eD5E7ab341281a2E1A04b4",
+        swapManager: "0x892c61920D2c8B8C94482b75e7044484dBFd75d4",
         boringVault: "0x1B7Bbc206Fc58413dCcDC9A4Ad1c5a95995a3926",
     },
 };

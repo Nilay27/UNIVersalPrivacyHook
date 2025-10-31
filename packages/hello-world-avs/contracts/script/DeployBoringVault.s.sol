@@ -23,7 +23,7 @@ contract DeployBoringVault is Script {
 
     // Deployed contract addresses on Sepolia
     address constant UNIVERSAL_PRIVACY_HOOK = 0x32841c9E0245C4B1a9cc29137d7E1F078e6f0080;
-    address constant SWAP_MANAGER = 0x04452661c2F3f91594eD5E7ab341281a2E1A04b4;
+    address constant SWAP_MANAGER = 0x892c61920D2c8B8C94482b75e7044484dBFd75d4;
     address constant MOCK_USDC = 0x59dd1A3Bd1256503cdc023bfC9f10e107d64C3C1;
     address constant MOCK_USDT = 0xB1D9519e953B8513a4754f9B33d37eDba90c001D;
 
