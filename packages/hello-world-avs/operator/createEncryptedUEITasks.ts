@@ -13,7 +13,7 @@ import { ethers } from 'ethers';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import { createInstance, SepoliaConfig } from '@zama-fhe/relayer-sdk/node';
-import { CHAIN_DEPLOYMENTS } from './config/chains';
+import { CHAIN_DEPLOYMENTS, CHAIN_IDS, ChainIdLiteral } from './config/chains';
 import { PROTOCOL_FUNCTIONS } from './utils';
 
 dotenv.config();
@@ -130,7 +130,7 @@ async function createUSDCTransferUEI() {
         const chainId = Number(network.chainId);
 
         const chainDeployment = CHAIN_DEPLOYMENTS[
-            chainId as keyof typeof CHAIN_DEPLOYMENTS
+            chainId as ChainIdLiteral
         ];
         if (!chainDeployment) {
             throw new Error(`No chain deployment metadata found for chainId ${chainId}`);
@@ -141,18 +141,14 @@ async function createUSDCTransferUEI() {
         const usdcAddress = chainDeployment.tokens?.USDC ?? DEFAULT_USDC;
         const ptEusdeAddress = chainDeployment.tokens?.PT_eUSDE;
         const aaveAddress = chainDeployment.protocols?.aave;
-        if (!aaveAddress) {
-            throw new Error("Aave protocol address missing from chain deployment metadata");
+        if (!ptEusdeAddress || !aaveAddress) {
+            throw new Error("PT-eUSDE or Aave address missing in deployment metadata");
         }
-        if (!ptEusdeAddress) {
-            throw new Error("PT_eUSDE token address missing from chain deployment metadata");
-        }
-
         const aaveSupplyFn = PROTOCOL_FUNCTIONS.find(
             (fn) => fn.protocol === "aave" && fn.functionName === "supply"
         );
         if (!aaveSupplyFn) {
-            throw new Error("Unable to locate AAVE supply function metadata");
+            throw new Error("Unable to locate Aave supply metadata");
         }
         const aaveSupplySelector = aaveSupplyFn.selector;
 
@@ -185,7 +181,6 @@ async function createUSDCTransferUEI() {
         // Initialize FHEVM
         await initializeFhevmInstance();
 
-        // Batch encrypt: decoder, target, selector, args
         const intentTemplates = [
             {
                 description: "Transfer 100 USDC back to the submitter",
@@ -226,7 +221,7 @@ async function createUSDCTransferUEI() {
                 template.decoder,
                 template.target,
                 template.selector,
-                chainId,
+                i === 0 ? CHAIN_IDS.ETHEREUM_SEPOLIA : CHAIN_IDS.BASE_SEPOLIA,
                 template.args,
                 swapManagerAddress,
                 wallet.address

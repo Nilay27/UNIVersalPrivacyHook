@@ -1,0 +1,12 @@
+{
+  "addresses": {
+    "admin": "0x0cD73A4E3d34D5488BC4E547fECeDAc86305dB9d",
+    "baseSwapManager": "0x62E43c9E8F7C8b94298C97492339e866FF8Fb0a5",
+    "boringVault": "0xA63D871F2C63E5fEB160094a0a0A0a6Db657aA63",
+    "deployer": "0x0cD73A4E3d34D5488BC4E547fECeDAc86305dB9d"
+  },
+  "lastUpdate": {
+    "block_number": "33088608",
+    "timestamp": "1761945504"
+  }
+}

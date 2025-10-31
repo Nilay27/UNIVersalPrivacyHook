@@ -21,11 +21,14 @@ import * as fs from 'fs';
 import { createInstance, SepoliaConfig } from '@zama-fhe/relayer-sdk/node';
 import {
     encodeProtocolCalldata,
+    mapAddressForChain,
     prepareProtocolArguments,
     ProtocolCallLookupResult,
     resolveProtocolCall,
 } from './utils';
 import { registerConfiguredProtocolTargets } from './config/protocolTargets';
+import { CHAIN_DEPLOYMENTS, ChainIdLiteral } from './config/chains';
+import { getNexusSdk, initializeNexus } from './nexus';
 
 dotenv.config();
 
@@ -208,35 +211,51 @@ function reconstructCalldata(
     definition: ProtocolCallLookupResult;
     calldata: string;
     preparedArgs: (string | bigint)[];
+    mappedTarget: string;
+    mappedArgs: bigint[];
 } {
     console.log("\n🔧 Reconstructing calldata...");
-        console.log(`  Target: ${target}`);
-        console.log(`  Selector: ${selector}`);
-        console.log(`  ChainId: ${chainId}`);
+    console.log(`  Target: ${target}`);
+    console.log(`  Selector: ${selector}`);
+    console.log(`  ChainId: ${chainId}`);
 
         try {
             const definition = resolveProtocolCall(chainId, target, selector);
-        console.log(`  Protocol: ${definition.protocol}`);
-        console.log(`  Function: ${definition.signature}`);
+            console.log(`  Protocol: ${definition.protocol}`);
+            console.log(`  Function: ${definition.signature}`);
 
-        const preparedArgs = prepareProtocolArguments(definition, args);
-        definition.argNames.forEach((name, index) => {
-            const value = preparedArgs[index];
-            console.log(`    ${name}: ${formatArgValue(value)}`);
-        });
+            const mappedTarget = mapAddressForChain(target, chainId);
+            const mappedArgs = args.map((value, index) => {
+                if (definition.argTypes[index] === "address") {
+                    const canonicalAddress = ethers.getAddress(
+                        ethers.toBeHex(value, 20)
+                    );
+                    const mapped = mapAddressForChain(canonicalAddress, chainId);
+                    return ethers.toBigInt(mapped);
+                }
+                return value;
+            });
 
-        const calldata = encodeProtocolCalldata(definition, args);
-        console.log(`  Calldata: ${calldata}`);
+            const preparedArgs = prepareProtocolArguments(definition, mappedArgs);
+            definition.argNames.forEach((name, index) => {
+                const value = preparedArgs[index];
+                console.log(`    ${name}: ${formatArgValue(value)}`);
+            });
 
-        return {
-            definition,
-            calldata,
-            preparedArgs,
-        };
-    } catch (error) {
-        console.error("❌ Failed to reconstruct calldata:", error);
-        throw error;
-    }
+            const calldata = encodeProtocolCalldata(definition, mappedArgs);
+            console.log(`  Calldata: ${calldata}`);
+
+            return {
+                definition,
+                calldata,
+                preparedArgs,
+                mappedTarget,
+                mappedArgs,
+            };
+        } catch (error) {
+            console.error("❌ Failed to reconstruct calldata:", error);
+            throw error;
+        }
 }
 
 async function createAggregatedSignature(
@@ -260,6 +279,43 @@ async function createAggregatedSignature(
     return signature;
 }
 
+async function executeCrossChainProcessUEI(
+    chainId: number,
+    payload: ExecutionPayload,
+    signature: string,
+    swapManagerAbi: any,
+    operatorWallet: ethers.Wallet
+) {
+    const deployment = CHAIN_DEPLOYMENTS[chainId as ChainIdLiteral];
+    if (!deployment?.swapManager) {
+        throw new Error(`SwapManager address not configured for chain ${chainId}`);
+    }
+
+    await ensureNexusInitialized(operatorWallet);
+    const sdk = getNexusSdk();
+
+    console.log(`\n🌐 Dispatching cross-chain processUEI to chain ${chainId}`);
+    console.log(`  SwapManager: ${deployment.swapManager}`);
+
+    await sdk.execute({
+        toChainId: chainId as any,
+        contractAddress: deployment.swapManager,
+        contractAbi: swapManagerAbi,
+        functionName: 'processUEI',
+        buildFunctionParams: () => ({
+            functionParams: [
+                payload.intentIds,
+                payload.decoders,
+                payload.targets,
+                payload.calldatas,
+                [signature],
+            ],
+        }),
+    });
+
+    console.log("✅ Cross-chain processUEI dispatched via Nexus");
+}
+
 type PreparedIntent = {
     intentId: string;
     decoder: string;
@@ -272,99 +328,137 @@ type PreparedIntent = {
     preparedArgs: (string | bigint)[];
 };
 
+type ExecutionPayload = {
+    intentIds: string[];
+    decoders: string[];
+    targets: string[];
+    calldatas: string[];
+};
+
+let nexusInitialized = false;
+
+async function ensureNexusInitialized(operatorWallet: ethers.Wallet) {
+    if (!nexusInitialized) {
+        await initializeNexus(operatorWallet);
+        nexusInitialized = true;
+    }
+}
+
+function buildExecutionPayload(trades: PreparedIntent[]): ExecutionPayload {
+    return {
+        intentIds: trades.map((t) => t.intentId),
+        decoders: trades.map((t) => t.decoder),
+        targets: trades.map((t) => t.target),
+        calldatas: trades.map((t) => t.calldata),
+    };
+}
+
+
 async function processAggregatedUEIs(
     swapManager: ethers.Contract,
+    swapManagerAbi: any,
     batchId: string,
     trades: PreparedIntent[],
-    operatorWallet: ethers.Wallet
+    operatorWallet: ethers.Wallet,
+    localChainId: number
 ) {
     if (!trades.length) {
         console.log("No trades to process for this batch.");
         return;
     }
 
-    console.log("\n📦 Preparing aggregated execution payload...");
-    const chainSet = new Set(trades.map((trade) => trade.chainId));
-    if (chainSet.size > 1) {
-        console.warn("⚠️  Detected multiple chainIds in a single batch. Ensure cross-chain execution is handled off-chain.");
+    const tradesByChain = new Map<number, PreparedIntent[]>();
+    for (const trade of trades) {
+        const list = tradesByChain.get(trade.chainId) ?? [];
+        list.push(trade);
+        tradesByChain.set(trade.chainId, list);
     }
 
-    trades.forEach((trade, index) => {
-        console.log(`  Intent ${index + 1}: ${trade.intentId}`);
-        console.log(`    Target: ${trade.target}`);
-        console.log(`    Decoder: ${trade.decoder}`);
-        console.log(`    Selector: ${trade.selector}`);
-        console.log(`    ChainId: ${trade.chainId}`);
-        console.log(`    Function: ${trade.definition.signature}`);
-        trade.definition.argNames.forEach((name, idx) => {
-            const value = trade.preparedArgs[idx];
-            console.log(`      ${name}: ${formatArgValue(value)}`);
-        });
-        console.log(`    Calldata length: ${trade.calldata.length} chars`);
-    });
-
-    const intentIds = trades.map((t) => t.intentId);
-    const decoders = trades.map((t) => t.decoder);
-    const targets = trades.map((t) => t.target);
-    const calldatas = trades.map((t) => t.calldata);
-
-    const signature = await createAggregatedSignature(
-        operatorWallet,
-        batchId,
-        intentIds,
-        decoders,
-        targets,
-        calldatas
-    );
-
-    console.log("\n📤 Submitting aggregated processUEI transaction...");
-    const tx = await swapManager.processUEI(
-        intentIds,
-        decoders,
-        targets,
-        calldatas,
-        [signature]
-    );
-    console.log(`  Transaction hash: ${tx.hash}`);
-    console.log("  Waiting for confirmation...");
-
-    const receipt = await tx.wait();
-    console.log("✅ Aggregated UEIs processed successfully!");
-    console.log(`  Gas used: ${receipt.gasUsed.toString()}`);
-
-    const abiCoder = ethers.AbiCoder.defaultAbiCoder();
-
-    for (const trade of trades) {
-        const execution = await swapManager.getUEIExecution(trade.intentId);
-        console.log("\n📊 Execution Result:");
-        console.log(`  Intent ID: ${trade.intentId}`);
-        console.log(`  Success: ${execution.success}`);
-        console.log(`  Executor: ${execution.executor}`);
-        console.log(`  Executed at: ${new Date(Number(execution.executedAt) * 1000).toLocaleString()}`);
-
-        const needsDecode = trades.length > 1 && execution.callData !== '0x';
-        const needsResult = execution.result !== '0x';
-
-        if (needsDecode || needsResult) {
-            let decodedCalldata: string[] = [];
-            if (needsDecode) {
-                const [callDatasPacked] = abiCoder.decode(['bytes[]'], execution.callData);
-                decodedCalldata = callDatasPacked as string[];
-            } else {
-                decodedCalldata = [execution.callData];
-            }
-
-            let operationResults: string[] = [];
-            if (needsResult) {
-                const [resultBytes] = abiCoder.decode(['bytes[]'], execution.result);
-                operationResults = resultBytes as string[];
-            }
-
-            decodedCalldata.forEach((calldata, index) => {
-                console.log(`  Step ${index + 1} calldata: ${calldata}`);
-                const result = operationResults[index] || '0x';
-                console.log(`  Step ${index + 1} result: ${result}`);
+    for (const [chainId, chainTrades] of tradesByChain.entries()) {
+        console.log(`\n📦 Preparing execution payload for chain ${chainId} (${chainTrades.length} intents)`);
+        chainTrades.forEach((trade, index) => {
+            console.log(`  Intent ${index + 1}: ${trade.intentId}`);
+            console.log(`    Target: ${trade.target}`);
+            console.log(`    Decoder: ${trade.decoder}`);
+            console.log(`    Selector: ${trade.selector}`);
+            console.log(`    Function: ${trade.definition.signature}`);
+            trade.definition.argNames.forEach((name, idx) => {
+                const value = trade.preparedArgs[idx];
+                console.log(`      ${name}: ${formatArgValue(value)}`);
             });
+            console.log(`    Calldata length: ${trade.calldata.length} chars`);
+        });
+
+        const payload = buildExecutionPayload(chainTrades);
+
+        const signature = await createAggregatedSignature(
+            operatorWallet,
+            batchId,
+            payload.intentIds,
+            payload.decoders,
+            payload.targets,
+            payload.calldatas
+        );
+
+        if (chainId === localChainId) {
+            console.log("\n📤 Submitting aggregated processUEI transaction on local chain...");
+            const tx = await swapManager.processUEI(
+                payload.intentIds,
+                payload.decoders,
+                payload.targets,
+                payload.calldatas,
+                [signature]
+            );
+            console.log(`  Transaction hash: ${tx.hash}`);
+            console.log("  Waiting for confirmation...");
+
+            const receipt = await tx.wait();
+            console.log("✅ Aggregated UEIs processed successfully on local chain!");
+            console.log(`  Gas used: ${receipt.gasUsed.toString()}`);
+
+            const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+
+            for (const trade of chainTrades) {
+                const execution = await swapManager.getUEIExecution(trade.intentId);
+                console.log("\n📊 Execution Result:");
+                console.log(`  Intent ID: ${trade.intentId}`);
+                console.log(`  Success: ${execution.success}`);
+                console.log(`  Executor: ${execution.executor}`);
+                console.log(`  Executed at: ${new Date(Number(execution.executedAt) * 1000).toLocaleString()}`);
+
+                const needsDecode = chainTrades.length > 1 && execution.callData !== '0x';
+                const needsResult = execution.result !== '0x';
+
+                if (needsDecode || needsResult) {
+                    let decodedCalldata: string[] = [];
+                    if (needsDecode) {
+                        const [callDatasPacked] = abiCoder.decode(['bytes[]'], execution.callData);
+                        decodedCalldata = callDatasPacked as string[];
+                    } else {
+                        decodedCalldata = [execution.callData];
+                    }
+
+                    let operationResults: string[] = [];
+                    if (needsResult) {
+                        const [resultBytes] = abiCoder.decode(['bytes[]'], execution.result);
+                        operationResults = resultBytes as string[];
+                    }
+
+                    decodedCalldata.forEach((calldata, index) => {
+                        console.log(`  Step ${index + 1} calldata: ${calldata}`);
+                        const result = operationResults[index] || '0x';
+                        console.log(`  Step ${index + 1} result: ${result}`);
+                    });
+                }
+            }
+        } else {
+            await executeCrossChainProcessUEI(
+                chainId,
+                payload,
+                signature,
+                swapManagerAbi,
+                operatorWallet
+            );
         }
     }
 }
@@ -375,9 +469,11 @@ async function processAggregatedUEIs(
 async function handleBatchFinalized(
     provider: ethers.Provider,
     swapManager: ethers.Contract,
+    swapManagerAbi: any,
     batchId: string,
     selectedOperators: string[],
-    operatorWallet: ethers.Wallet
+    operatorWallet: ethers.Wallet,
+    localChainId: number
 ): Promise<void> {
     try {
         console.log("\n🚀 UEI Batch Finalized!");
@@ -401,6 +497,11 @@ async function handleBatchFinalized(
 
         // Get batch details
         const batch = await swapManager.getTradeBatch(batchId);
+        if (batch.executed) {
+            console.log(`\n⚠️ Batch ${batchId} already executed on-chain. Skipping.`);
+            console.log("=".repeat(80));
+            return;
+        }
         console.log(`\n📋 Batch contains ${batch.intentIds.length} trades:`);
         batch.intentIds.forEach((id: string, i: number) => {
             console.log(`  ${i + 1}. ${id}`);
@@ -458,16 +559,18 @@ async function handleBatchFinalized(
                 definition,
                 calldata,
                 preparedArgs,
+                mappedTarget,
+                mappedArgs,
             } = reconstructCalldata(decrypted.chainId, decrypted.target, decrypted.selector, decrypted.args);
 
             preparedIntents.push({
                 intentId,
                 decoder: decrypted.decoder,
-                target: decrypted.target,
+                target: mappedTarget,
                 selector: decrypted.selector,
                 chainId: decrypted.chainId,
                 calldata,
-                args: decrypted.args,
+                args: mappedArgs,
                 definition,
                 preparedArgs,
             });
@@ -475,9 +578,11 @@ async function handleBatchFinalized(
 
         await processAggregatedUEIs(
             swapManager,
+            swapManagerAbi,
             batchId,
             preparedIntents,
-            operatorWallet
+            operatorWallet,
+            localChainId
         );
 
         console.log("\n✅ Batch processed end-to-end!");
@@ -500,10 +605,13 @@ async function startUEIProcessor() {
         // Setup
         const provider = new ethers.JsonRpcProvider(PROVIDER_URL);
         const operatorWallet = new ethers.Wallet(PRIVATE_KEY, provider);
+        const network = await provider.getNetwork();
+        const localChainId = Number(network.chainId);
 
         console.log("👤 Operator wallet:", operatorWallet.address);
         console.log("🏦 SwapManager:", SWAP_MANAGER);
         console.log("💰 BoringVault:", BORING_VAULT);
+        console.log("🌐 Local chainId:", localChainId);
 
         // Load SwapManager ABI
         const swapManagerAbi = JSON.parse(
@@ -539,12 +647,14 @@ async function startUEIProcessor() {
             // TODO: Skip batches that are already executed once contract exposes execution status on-chain.
             if (!processedBatches.has(batchId)) {
                 processedBatches.add(batchId);
-                await handleBatchFinalized(
-                    provider,
-                    swapManager,
+                        await handleBatchFinalized(
+                            provider,
+                            swapManager,
+                            swapManagerAbi,
                             batchId,
                             selectedOperators,
-                            operatorWallet
+                            operatorWallet,
+                            localChainId
                         ).catch(error => {
                             console.error("Error processing past batch:", error);
                         });
@@ -588,9 +698,11 @@ async function startUEIProcessor() {
                             await handleBatchFinalized(
                                 provider,
                                 swapManager,
+                                swapManagerAbi,
                                 batchId,
                                 selectedOperators,
-                                operatorWallet
+                                operatorWallet,
+                                localChainId
                             ).catch(error => {
                                 console.error("Error processing batch:", error);
                             });

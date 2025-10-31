@@ -32,8 +32,8 @@ export const CHAIN_DEPLOYMENTS: Record<ChainIdLiteral, ChainDeployment> = {
             PT_sUSDE: "0xfeCb7785CA797A709095F4146140329fCf970FE8",
             PT_USR: "0xB909F6b859910ad59D2F4003cd8610Af4fa41Fef",
         },
-        swapManager: undefined,
-        boringVault: undefined,
+        swapManager: "0x62E43c9E8F7C8b94298C97492339e866FF8Fb0a5",
+        boringVault: "0xA63D871F2C63E5fEB160094a0a0A0a6Db657aA63",
     },
     [CHAIN_IDS.ETHEREUM_SEPOLIA]: {
         tokens: {
