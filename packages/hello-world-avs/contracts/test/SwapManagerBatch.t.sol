@@ -488,4 +488,118 @@ contract SwapManagerBatchTest is Test {
         vm.expectRevert("Operator must be the caller");
         swapManager.processUEI(intentId, address(0x100), address(0x200), "", new bytes[](0));
     }
+
+    function testSubmitEncryptedUEIBatchCreatesSeparateTasks() public {
+        bytes[] memory ctBlobs = new bytes[](2);
+        ctBlobs[0] = abi.encode(
+            bytes32(uint256(11)),
+            bytes32(uint256(12)),
+            bytes32(uint256(13)),
+            new bytes32[](0)
+        );
+        ctBlobs[1] = abi.encode(
+            bytes32(uint256(21)),
+            bytes32(uint256(22)),
+            bytes32(uint256(23)),
+            new bytes32[](0)
+        );
+
+        bytes[] memory proofs = new bytes[](2);
+        proofs[0] = "";
+        proofs[1] = "";
+
+        uint256[] memory deadlines = new uint256[](2);
+        deadlines[0] = block.timestamp + 30 minutes;
+        deadlines[1] = block.timestamp + 45 minutes;
+
+        vm.prank(user1);
+        bytes32[] memory intentIds = swapManager.submitEncryptedUEIBatch(ctBlobs, proofs, deadlines);
+
+        assertEq(intentIds.length, 2);
+
+        ISwapManager.UEITask memory task0 = swapManager.getUEITask(intentIds[0]);
+        ISwapManager.UEITask memory task1 = swapManager.getUEITask(intentIds[1]);
+
+        assertEq(task0.submitter, user1);
+        assertEq(task1.submitter, user1);
+        assertEq(task0.batchId, task1.batchId, "UEIs should share batch");
+
+        ISwapManager.TradeBatch memory batch = swapManager.getTradeBatch(task0.batchId);
+        assertEq(batch.intentIds.length, 2, "Batch should track both intents");
+        assertEq(batch.intentIds[0], intentIds[0]);
+        assertEq(batch.intentIds[1], intentIds[1]);
+    }
+
+    function testProcessUEIBatchAggregated() public {
+        bytes[] memory ctBlobs = new bytes[](2);
+        ctBlobs[0] = abi.encode(
+            bytes32(uint256(31)),
+            bytes32(uint256(32)),
+            bytes32(uint256(33)),
+            new bytes32[](0)
+        );
+        ctBlobs[1] = abi.encode(
+            bytes32(uint256(41)),
+            bytes32(uint256(42)),
+            bytes32(uint256(43)),
+            new bytes32[](0)
+        );
+
+        bytes[] memory proofs = new bytes[](2);
+        proofs[0] = "";
+        proofs[1] = "";
+
+        uint256[] memory deadlines = new uint256[](2);
+        deadlines[0] = block.timestamp + 30 minutes;
+        deadlines[1] = block.timestamp + 45 minutes;
+
+        vm.prank(user1);
+        bytes32[] memory intentIds = swapManager.submitEncryptedUEIBatch(ctBlobs, proofs, deadlines);
+
+        vm.warp(block.timestamp + 11 minutes);
+        swapManager.finalizeUEIBatch();
+
+        ISwapManager.UEITask memory task = swapManager.getUEITask(intentIds[0]);
+        ISwapManager.TradeBatch memory batch = swapManager.getTradeBatch(task.batchId);
+        address selectedOp = batch.selectedOperators[0];
+
+        uint256 operatorPk;
+        if (selectedOp == operator1) operatorPk = 2;
+        else if (selectedOp == operator2) operatorPk = 3;
+        else operatorPk = 4;
+
+        bytes32[] memory aggregatedIntentIds = intentIds;
+        address[] memory decoders = new address[](0); // aggregated flow may omit per-step decoders
+        address[] memory targets = new address[](2);
+        targets[0] = address(0x300);
+        targets[1] = address(0x301);
+
+        bytes[] memory calldatas = new bytes[](2);
+        calldatas[0] = hex"1111";
+        calldatas[1] = hex"2222";
+
+        bytes32 dataHash = keccak256(
+            abi.encode(task.batchId, aggregatedIntentIds, decoders, targets, calldatas)
+        );
+        bytes32 ethSigned = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", dataHash));
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(operatorPk, ethSigned);
+        bytes[] memory signatures = new bytes[](1);
+        signatures[0] = abi.encodePacked(r, s, v);
+
+        vm.prank(selectedOp);
+        swapManager.processUEI(aggregatedIntentIds, decoders, targets, calldatas, signatures);
+
+        for (uint256 i = 0; i < aggregatedIntentIds.length; i++) {
+            ISwapManager.UEITask memory processedTask = swapManager.getUEITask(aggregatedIntentIds[i]);
+            assertEq(uint(processedTask.status), uint(ISwapManager.UEIStatus.Executed));
+
+            ISwapManager.UEIExecution memory execution = swapManager.getUEIExecution(aggregatedIntentIds[i]);
+            assertTrue(execution.success);
+            assertEq(execution.executor, selectedOp);
+
+            bytes[] memory decodedResults = abi.decode(execution.result, (bytes[]));
+            assertEq(decodedResults.length, targets.length);
+        }
+    }
 }

@@ -110,11 +110,25 @@ interface ISwapManager {
     event BoringVaultSet(address indexed vault);
 
     // UEI functions
+    function submitEncryptedUEIBatch(
+        bytes[] calldata ctBlobs,
+        bytes[] calldata inputProofs,
+        uint256[] calldata deadlines
+    ) external returns (bytes32[] memory intentIds);
+
     function submitEncryptedUEI(
         bytes calldata ctBlob,
         bytes calldata inputProof,
         uint256 deadline
     ) external returns (bytes32 intentId);
+
+    function processUEI(
+        bytes32[] calldata intentIds,
+        address[] calldata decoders,
+        address[] calldata targets,
+        bytes[] calldata reconstructedData,
+        bytes[] calldata operatorSignatures
+    ) external;
 
     function finalizeUEIBatch() external;
 

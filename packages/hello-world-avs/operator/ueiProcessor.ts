@@ -415,7 +415,7 @@ async function startUEIProcessor() {
         const swapManagerAbi = JSON.parse(
             fs.readFileSync('./abis/SwapManager.json', 'utf8')
         );
-        const swapManager = new ethers.Contract(SWAP_MANAGER, swapManagerAbi, provider);
+        const swapManager = new ethers.Contract(SWAP_MANAGER, swapManagerAbi, operatorWallet);
 
         // Initialize FHEVM
         await initializeFhevmInstance();
