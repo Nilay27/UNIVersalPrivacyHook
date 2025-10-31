@@ -7,6 +7,7 @@ import {SwapManager} from "../src/SwapManager.sol";
 import {ECDSAStakeRegistry} from "@eigenlayer-middleware/src/unaudited/ECDSAStakeRegistry.sol";
 import {CoreDeployLib, CoreDeploymentParsingLib} from "./utils/CoreDeploymentParsingLib.sol";
 import {SwapManagerDeploymentLib} from "./utils/SwapManagerDeploymentLib.sol";
+import {SimpleBoringVault} from "../src/SimpleBoringVault.sol";
 
 interface IUniversalPrivacyHook {
     function setSwapManager(address _swapManager) external;
@@ -25,6 +26,7 @@ contract DeploySwapManagerDirect is Script {
 
     // UniversalPrivacyHook address on Sepolia
     address constant UNIVERSAL_PRIVACY_HOOK = 0x32841c9E0245C4B1a9cc29137d7E1F078e6f0080;
+    address payable constant BORING_VAULT = payable(0x1B7Bbc206Fc58413dCcDC9A4Ad1c5a95995a3926);
 
     function setUp() public virtual {
         deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
@@ -77,6 +79,15 @@ contract DeploySwapManagerDirect is Script {
         console2.log("\nAuthorizing UniversalPrivacyHook in SwapManager...");
         swapManager.authorizeHook(UNIVERSAL_PRIVACY_HOOK);
         console2.log("Hook authorized");
+
+        // set boring vault in swap manager and grant executor rights
+        console2.log("\n Setting Boring Vault in SwapManager...");
+        swapManager.setBoringVault(BORING_VAULT);
+        console2.log("Boring vault set");
+
+        console2.log("Granting executor rights to new SwapManager in vault...");
+        SimpleBoringVault(BORING_VAULT).setExecutor(address(swapManager), true);
+        console2.log("Executor granted");
 
 
         IUniversalPrivacyHook(UNIVERSAL_PRIVACY_HOOK).setSwapManager(address(swapManager));

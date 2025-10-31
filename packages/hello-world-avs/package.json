@@ -27,10 +27,11 @@
     "test": "NODE_OPTIONS=\"$NODE_OPTIONS --experimental-vm-modules\" npx jest"
   },
   "dependencies": {
+    "@avail-project/nexus-core": "^0.0.2",
+    "@zama-fhe/relayer-sdk": "^0.2.0",
     "bignumber.js": "^9.3.1",
     "dotenv": "^10.0.0",
-    "ethers": "^6.15.0",
-    "@zama-fhe/relayer-sdk": "^0.2.0"
+    "ethers": "^6.15.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.13",

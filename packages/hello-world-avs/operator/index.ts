@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import * as dotenv from "dotenv";
-import { initializeFhevm, decryptAmount, batchDecryptAmounts, encryptAmount, batchEncryptAmounts } from "./fhevmUtils";
-import { initializeUEIProcessor, processUEI, monitorUEIEvents, decodeUEIBlob, reconstructCalldata } from './ueiProcessor';
+import { initializeFhevm, batchDecryptAmounts, batchEncryptAmounts } from "./fhevmUtils";
+import { startUEIProcessor } from './ueiProcessor';
 const fs = require('fs');
 const path = require('path');
 dotenv.config();
@@ -608,9 +608,6 @@ const monitorBatches = async () => {
 const main = async () => {
     // Initialize ZAMA FHEVM for FHE operations
     await initializeFhevm(wallet);
-
-    // Initialize UEI processor with the same wallet
-    await initializeUEIProcessor(wallet);
 
     await registerOperator();
 
