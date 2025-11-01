@@ -29,6 +29,7 @@ import {
 import { registerConfiguredProtocolTargets } from './config/protocolTargets';
 import { CHAIN_DEPLOYMENTS, ChainIdLiteral } from './config/chains';
 import { getNexusSdk, initializeNexus } from './nexus';
+import logger from './logger';
 
 dotenv.config();
 
@@ -157,28 +158,41 @@ async function batchDecryptUEI(
             eip712.message
         );
 
-        // Batch decrypt all components
-        const decryptedResults = await fhevm.userDecrypt(
-            handleContractPairs,
-            privateKey,
-            publicKey,
-            signature,
-            contractAddresses,
-            operatorWallet.address,
-            startTimestamp,
-            durationDays
-        );
+        const maxHandlesPerCall = 2;
+        const aggregatedResults: Array<string | number | bigint> = [];
+        const totalChunks = Math.ceil(handleContractPairs.length / maxHandlesPerCall);
 
-        const results = Object.values(decryptedResults);
-        console.log(`✅ Successfully decrypted ${results.length} components\n`);
+        for (let i = 0; i < handleContractPairs.length; i += maxHandlesPerCall) {
+            const chunk = handleContractPairs.slice(i, i + maxHandlesPerCall);
+            const chunkIndex = Math.floor(i / maxHandlesPerCall) + 1;
+
+            logger.info(`UEI decrypt chunk ${chunkIndex}/${totalChunks}`, { handles: chunk.length });
+
+            const chunkResults = await fhevm.userDecrypt(
+                chunk,
+                privateKey,
+                publicKey,
+                signature,
+                contractAddresses,
+                operatorWallet.address,
+                startTimestamp,
+                durationDays
+            );
+
+            const orderedChunk = Object.values(chunkResults).map(value => value as string | number | bigint);
+            logger.info(`UEI decrypt chunk ${chunkIndex} results`, orderedChunk.map(value => value.toString()));
+            aggregatedResults.push(...orderedChunk);
+        }
+
+        console.log(`✅ Successfully decrypted ${aggregatedResults.length} components across ${totalChunks} calls\n`);
 
         // Convert to appropriate types
-        const decoder = ethers.getAddress(ethers.toBeHex(BigInt(results[0] as any), 20));
-        const target = ethers.getAddress(ethers.toBeHex(BigInt(results[1] as any), 20));
-        const selectorNum = Number(results[2]);
+        const decoder = ethers.getAddress(ethers.toBeHex(BigInt(aggregatedResults[0] as any), 20));
+        const target = ethers.getAddress(ethers.toBeHex(BigInt(aggregatedResults[1] as any), 20));
+        const selectorNum = Number(aggregatedResults[2]);
         const selector = `0x${selectorNum.toString(16).padStart(8, '0')}`;
-        const chainId = Number(results[3]);
-        const args = results.slice(4).map(val => BigInt(val as any));
+        const chainId = Number(aggregatedResults[3]);
+        const args = aggregatedResults.slice(4).map(val => BigInt(val as any));
 
         console.log("🔍 Decrypted UEI Details:");
         console.log(`  Decoder: ${decoder}`);
