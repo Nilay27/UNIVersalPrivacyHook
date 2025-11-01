@@ -255,7 +255,7 @@ async function submitHelperCounterIntent(
             console.log("⏰ Scheduling finalization trigger in 48 seconds...");
             setTimeout(async () => {
                 await submitFinalizationTrigger(universalHook, poolKey);
-            }, 48000);
+            }, 2000);
         }
     } catch (error) {
         console.error("❌ Error submitting helper intent:", error);
@@ -269,22 +269,13 @@ async function submitFinalizationTrigger(
     poolKey: any
 ): Promise<void> {
     try {
-        console.log("\n🎯 Submitting finalization trigger (tiny intent to force batch processing)...");
-
-        const tinyIntent: SwapIntent = {
-            tokenIn: USDC_ADDRESS,
-            tokenOut: USDT_ADDRESS,
-            amount: BigInt(200), // 200 wei to avoid Uniswap minimum swap revert
-            description: "Finalization trigger"
-        };
-
-        const intentId = await submitEncryptedIntent(universalHook, poolKey, tinyIntent);
-        if (intentId) {
-            console.log(`✅ Finalization trigger submitted: ${intentId}`);
-            console.log("📦 Batch should finalize and settle within 1-2 minutes!");
-        }
+        console.log("\n🔨 Finalizing current batch immediately via hook...");
+        const tx = await universalHook.finalizeBatch(poolKey.id ?? poolKey);
+        console.log(`  Hook finalize tx: ${tx.hash}`);
+        await tx.wait();
+        console.log("✅ Batch finalized without delay!");
     } catch (error) {
-        console.error("❌ Error submitting finalization trigger:", error);
+        console.error("❌ Error finalizing batch via hook:", error);
     }
 }
 
