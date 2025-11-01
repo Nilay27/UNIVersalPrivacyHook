@@ -39,6 +39,39 @@ const PRIVATE_KEY = process.env.PRIVATE_KEY || '';
 // Register protocol mappings for all known chains on startup
 registerConfiguredProtocolTargets();
 
+const installNexusErrorInspector = () => {
+    if ((globalThis as any).__nexusErrorInspectorInstalled) {
+        return;
+    }
+    const originalConsoleError = console.error.bind(console);
+    console.error = (...args: unknown[]) => {
+        try {
+            const [first, second, third] = args;
+            const maybeMessage = typeof first === 'string' ? first : typeof second === 'string' ? second : null;
+            const maybeError = (second instanceof Error ? second : third instanceof Error ? third : null) as (Error & {
+                response?: { status?: number; statusText?: string; data?: unknown; request?: { path?: string } };
+                code?: string;
+            }) | null;
+            if (maybeMessage && maybeMessage.includes('XAR_CA_SDK') && maybeError) {
+                const meta = {
+                    code: maybeError.code,
+                    status: maybeError.response?.status,
+                    statusText: maybeError.response?.statusText,
+                    data: maybeError.response?.data,
+                    requestPath: (maybeError.response as any)?.config?.url ?? (maybeError.response as any)?.request?.path,
+                };
+                originalConsoleError('[NEXUS_DEBUG] detailed error', meta);
+            }
+        } catch {
+            // ignore inspector failures
+        }
+        originalConsoleError(...(args as any));
+    };
+    (globalThis as any).__nexusErrorInspectorInstalled = true;
+};
+
+installNexusErrorInspector();
+
 // Deployed contract addresses
 const SWAP_MANAGER = '0x892c61920D2c8B8C94482b75e7044484dBFd75d4';
 const BORING_VAULT = '0x1B7Bbc206Fc58413dCcDC9A4Ad1c5a95995a3926';
