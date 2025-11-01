@@ -158,7 +158,7 @@ async function batchDecryptUEI(
             eip712.message
         );
 
-        const maxHandlesPerCall = 2;
+        const maxHandlesPerCall = 3;
         const aggregatedResults: Array<string | number | bigint> = [];
         const totalChunks = Math.ceil(handleContractPairs.length / maxHandlesPerCall);
 
@@ -353,7 +353,13 @@ let nexusInitialized = false;
 
 async function ensureNexusInitialized(operatorWallet: ethers.Wallet) {
     if (!nexusInitialized) {
-        await initializeNexus(operatorWallet);
+        const enableNexusDebug = process.env.NEXUS_DEBUG === 'true';
+        try {
+            await initializeNexus(operatorWallet, { debug: enableNexusDebug });
+        } catch (err) {
+            console.error('❌ Nexus initialization failed:', err);
+            throw err;
+        }
         nexusInitialized = true;
     }
 }
