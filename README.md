@@ -250,12 +250,12 @@ sequenceDiagram
 sequenceDiagram
     participant Admin
     participant TradeManager
-    participant CoFHE
+    participant FHEVM
 
     rect rgb(30, 60, 80)
         Note over Admin,TradeManager: PHASE 1: Epoch Initialization
-        Admin->>CoFHE: Encrypt simulation window
-        Note over Admin,CoFHE: Start: 7 days ago<br/>End: 1 day ago
+        Admin->>FHEVM: Encrypt simulation window
+        Note over Admin,FHEVM: Start: 7 days ago<br/>End: 1 day ago
         Admin->>TradeManager: startEpoch(encSimStart, encSimEnd, weights)
         TradeManager-->>Admin: Epoch started
     end
@@ -267,15 +267,15 @@ sequenceDiagram
 %%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#4ecdc4', 'primaryTextColor':'#fff', 'primaryBorderColor':'#45b7d1', 'lineColor':'#4ecdc4', 'secondaryColor':'#ff6b6b', 'tertiaryColor':'#3700b3', 'background':'#121212', 'mainBkg':'#1f1f1f', 'secondBkg':'#2d2d2d', 'labelBackground':'#2d2d2d', 'actorBkg':'#424242', 'actorBorder':'#4ecdc4', 'actorTextColor':'#fff', 'signalColor':'#4ecdc4', 'signalTextColor':'#fff'}}}%%
 sequenceDiagram
     participant Trader
-    participant CoFHE
+    participant FHEVM
     participant TradeManager
     participant AVS
     participant "Avail Nexus"
 
     rect rgb(60, 80, 40)
         Note over Trader,TradeManager: PHASE 2: Strategy Submission
-        Trader->>CoFHE: Encrypt strategy nodes
-        Note over Trader,CoFHE: Encoder, Target,<br/>Selector, Args
+        Trader->>FHEVM: Encrypt strategy nodes
+        Note over Trader,FHEVM: Encoder, Target,<br/>Selector, Args
         Trader->>TradeManager: submitEncryptedStrategy(targetChainId)
         TradeManager->>AVS: Grant decryption permission
         TradeManager-->>Trader: Strategy submitted
@@ -291,20 +291,20 @@ sequenceDiagram
 %%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#bb86fc', 'primaryTextColor':'#fff', 'primaryBorderColor':'#9f6bff', 'lineColor':'#bb86fc', 'secondaryColor':'#03dac6', 'tertiaryColor':'#3700b3', 'background':'#121212', 'mainBkg':'#1f1f1f', 'secondBkg':'#2d2d2d', 'labelBackground':'#2d2d2d', 'actorBkg':'#424242', 'actorBorder':'#bb86fc', 'actorTextColor':'#fff', 'signalColor':'#bb86fc', 'signalTextColor':'#fff'}}}%%
 sequenceDiagram
     participant AVS
-    participant CoFHE
+    participant FHEVM
     participant TradeManager
     participant "Avail Nexus"
 
     rect rgb(40, 80, 60)
         Note over AVS,TradeManager: PHASE 3: AVS Processing (Off-chain)
         AVS->>TradeManager: Fetch encrypted strategy
-        AVS->>CoFHE: Batch decrypt nodes
-        CoFHE-->>AVS: Decrypted values
+        AVS->>FHEVM: Batch decrypt nodes
+        FHEVM-->>AVS: Decrypted values
         AVS->>"Avail Nexus": Fetch cross-chain routing context
         "Avail Nexus"-->>AVS: Unified balances & target chain info
         AVS->>AVS: Simulate on 100k notional
         AVS->>AVS: Calculate APY
-        AVS->>CoFHE: Encrypt APY
+        AVS->>FHEVM: Encrypt APY
         AVS->>TradeManager: reportEncryptedAPY()
     end
 ```
