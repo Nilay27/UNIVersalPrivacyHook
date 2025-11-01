@@ -633,7 +633,7 @@ async function startUEIProcessor() {
         // Query past UEIBatchFinalized events first (last 1000 blocks)
         try {
             const filter = swapManager.filters.UEIBatchFinalized();
-            const fromBlock = Math.max(0, lastProcessedBlock - 1000);
+            const fromBlock = Math.max(0, lastProcessedBlock - 100);
             const events = await swapManager.queryFilter(filter, fromBlock, lastProcessedBlock);
 
             if (events.length > 0) {
