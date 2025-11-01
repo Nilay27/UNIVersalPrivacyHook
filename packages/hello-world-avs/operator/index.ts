@@ -487,8 +487,8 @@ const processBatch = async (batchId: string, batchData: string) => {
 
         // Get current gas price and boost by 20% for faster transactions
         const feeData = await provider.getFeeData();
-        const gasPrice = (feeData.gasPrice! * 120n) / 100n;
-        console.log(`Using gas price (120% boost): ${gasPrice.toString()}`);
+        const gasPrice = (feeData.gasPrice! * 150n) / 100n;
+        console.log(`Using gas price (150% boost): ${gasPrice.toString()}`);
 
         // Debug: log all parameters before submission
         console.log("\n=== Settlement Parameters ===");
@@ -515,7 +515,7 @@ const processBatch = async (batchId: string, batchData: string) => {
             [signature], // Array of operator signatures
             {
                 gasLimit: 5000000, // Manual gas limit to avoid estimation issues
-                gasPrice: gasPrice // 120% of current gas price for faster inclusion
+                gasPrice: gasPrice // 150% of current gas price for faster inclusion
             }
         );
 

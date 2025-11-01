@@ -114,7 +114,7 @@ async function submitEncryptedIntent(
         console.log(`Using nonce: ${nonce}`);
 
         const feeData = await provider.getFeeData();
-        const gasPrice = (feeData.gasPrice! * 120n) / 100n;
+        const gasPrice = (feeData.gasPrice! * 150n) / 100n;
         console.log(`Gas price: ${gasPrice.toString()}`);
 
         console.log("Submitting transaction to UniversalPrivacyHook...");
@@ -271,7 +271,11 @@ async function submitFinalizationTrigger(
 ): Promise<void> {
     try {
         console.log("\n🔨 Finalizing current batch immediately via hook...");
-        const tx = await universalHook.finalizeBatch(poolId);
+        const feeData = await provider.getFeeData?.();
+        const gasPrice = feeData?.gasPrice ? (feeData.gasPrice * 200n) / 100n : undefined;
+        const tx = await universalHook.finalizeBatch(poolId, {
+            gasPrice,
+        });
         console.log(`  Hook finalize tx: ${tx.hash}`);
         await tx.wait();
         console.log("✅ Batch finalized without delay!");
