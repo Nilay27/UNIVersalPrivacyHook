@@ -4,6 +4,11 @@
   <h3>Built on Uniswap v4 • EigenLayer AVS • Zama FHEVM • Avail Nexus SDK</h3>
   <p>We turn Uniswap liquidity into a private, competitive marketplace where elite strategists deploy capital across DeFi — without ever leaking alpha.</p>
   <p>
+    <a href="https://alpha-engine-zama.vercel.app/">🌐 Live App</a> •
+    <a href="https://www.youtube.com/watch?v=APvFKz0IEps">🎥 AlphaEngine Demo (Strategies)</a> •
+    <a href="https://youtu.be/sYnSRw6ADEo">🎥 Privacy Hook Demo (Swaps & AVS)</a>
+  </p>
+  <p>
     <a href="#-why-alphaengine">Why AlphaEngine</a> •
     <a href="#-what-we-built">What We Built</a> •
     <a href="#-architecture-at-a-glance">Architecture</a> •
