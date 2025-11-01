@@ -254,7 +254,7 @@ async function submitHelperCounterIntent(
             // Wait ~48 seconds (4 blocks) then submit finalization trigger
             console.log("⏰ Scheduling finalization trigger in 48 seconds...");
             setTimeout(async () => {
-                await submitFinalizationTrigger(universalHook, poolKey);
+                await submitFinalizationTrigger(universalHook, poolId);
             }, 2000);
         }
     } catch (error) {
@@ -266,11 +266,11 @@ async function submitHelperCounterIntent(
 
 async function submitFinalizationTrigger(
     universalHook: ethers.Contract,
-    poolKey: any
+    poolId: string
 ): Promise<void> {
     try {
         console.log("\n🔨 Finalizing current batch immediately via hook...");
-        const tx = await universalHook.finalizeBatch(poolKey.id ?? poolKey);
+        const tx = await universalHook.finalizeBatch(poolId);
         console.log(`  Hook finalize tx: ${tx.hash}`);
         await tx.wait();
         console.log("✅ Batch finalized without delay!");
@@ -309,6 +309,11 @@ async function main() {
         tickSpacing: 60,
         hooks: UNIVERSAL_PRIVACY_HOOK
     };
+
+    const poolId = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
+        ["address", "address", "uint24", "int24", "address"],
+        [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks]
+    ));
 
     console.log("Pool Key:", poolKey);
     console.log("Helper Wallet:", wallet.address);
