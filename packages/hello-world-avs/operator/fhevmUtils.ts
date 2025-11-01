@@ -266,23 +266,33 @@ export const batchDecryptAmounts = async (encryptedAmounts: string[]): Promise<b
             eip712.message
         );
 
-        // Decrypt all values in one call
-        const decryptedResults = await fhevmInstance.userDecrypt(
-            handleContractPairs,
-            privateKey,
-            publicKey,
-            signature,
-            contractAddresses,
-            operatorSigner.address,
-            startTimestamp,
-            durationDays
-        );
+        const maxHandlesPerCall = 2;
+        const aggregatedResults: bigint[] = [];
 
-        // Extract results in order
-        const results = Object.values(decryptedResults).map(value => BigInt(value as string | number | bigint));
+        for (let i = 0; i < handleContractPairs.length; i += maxHandlesPerCall) {
+            const chunk = handleContractPairs.slice(i, i + maxHandlesPerCall);
+            const chunkIndex = Math.floor(i / maxHandlesPerCall) + 1;
+            const totalChunks = Math.ceil(handleContractPairs.length / maxHandlesPerCall);
 
-        console.log(`Successfully batch decrypted ${results.length} amounts in one call`);
-        return results;
+            console.log(`Decrypting chunk ${chunkIndex}/${totalChunks} with ${chunk.length} handles...`);
+
+            const chunkResults = await fhevmInstance.userDecrypt(
+                chunk,
+                privateKey,
+                publicKey,
+                signature,
+                contractAddresses,
+                operatorSigner.address,
+                startTimestamp,
+                durationDays
+            );
+
+            const orderedChunk = Object.values(chunkResults).map(value => BigInt(value as string | number | bigint));
+            aggregatedResults.push(...orderedChunk);
+        }
+
+        console.log(`Successfully batch decrypted ${aggregatedResults.length} amounts across ${Math.ceil(handleContractPairs.length / maxHandlesPerCall)} calls`);
+        return aggregatedResults;
 
     } catch (error) {
         console.error("Error in batch decryption:", error);
