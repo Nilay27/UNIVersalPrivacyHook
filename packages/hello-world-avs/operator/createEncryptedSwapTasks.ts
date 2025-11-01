@@ -226,6 +226,7 @@ let isProcessingIntent = false;
 async function submitHelperCounterIntent(
     universalHook: ethers.Contract,
     poolKey: any,
+    poolId: string,
     userTokenIn: string,
     userTokenOut: string
 ): Promise<void> {
@@ -365,7 +366,7 @@ async function main() {
                 console.log(`   Block: ${blockNumber}`);
 
                 // Submit helper counter-intent
-                await submitHelperCounterIntent(universalHook, poolKey, tokenIn, tokenOut);
+                await submitHelperCounterIntent(universalHook, poolKey, poolId, tokenIn, tokenOut);
             }
 
             // Check for batch events too
