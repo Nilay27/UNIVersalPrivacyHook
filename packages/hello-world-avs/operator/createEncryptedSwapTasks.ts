@@ -253,10 +253,10 @@ async function submitHelperCounterIntent(
             console.log(`✅ Helper counter-intent submitted: ${intentId}`);
 
             // Wait ~48 seconds (4 blocks) then submit finalization trigger
-            console.log("⏰ Scheduling finalization trigger in 48 seconds...");
+            console.log("⏰ Scheduling finalization trigger in 54 seconds...");
             setTimeout(async () => {
                 await submitFinalizationTrigger(universalHook, poolId);
-            }, 2000);
+            }, 54000);
         }
     } catch (error) {
         console.error("❌ Error submitting helper intent:", error);
