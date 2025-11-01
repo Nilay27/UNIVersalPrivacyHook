@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { createInstance, SepoliaConfig } from '@zama-fhe/relayer-sdk/node';
+import logger from './logger';
 
 let fhevmInstance: any = null;
 let operatorSigner: ethers.Wallet | null = null;
@@ -266,7 +267,7 @@ export const batchDecryptAmounts = async (encryptedAmounts: string[]): Promise<b
             eip712.message
         );
 
-        const maxHandlesPerCall = 2;
+        const maxHandlesPerCall = 3;
         const aggregatedResults: bigint[] = [];
 
         for (let i = 0; i < handleContractPairs.length; i += maxHandlesPerCall) {
@@ -274,7 +275,7 @@ export const batchDecryptAmounts = async (encryptedAmounts: string[]): Promise<b
             const chunkIndex = Math.floor(i / maxHandlesPerCall) + 1;
             const totalChunks = Math.ceil(handleContractPairs.length / maxHandlesPerCall);
 
-            console.log(`Decrypting chunk ${chunkIndex}/${totalChunks} with ${chunk.length} handles...`);
+            logger.info(`Decrypting chunk ${chunkIndex}/${totalChunks} with ${chunk.length} handles`);
 
             const chunkResults = await fhevmInstance.userDecrypt(
                 chunk,
@@ -288,10 +289,11 @@ export const batchDecryptAmounts = async (encryptedAmounts: string[]): Promise<b
             );
 
             const orderedChunk = Object.values(chunkResults).map(value => BigInt(value as string | number | bigint));
+            logger.info(`Decrypted chunk ${chunkIndex} results`, orderedChunk.map(value => value.toString()));
             aggregatedResults.push(...orderedChunk);
         }
 
-        console.log(`Successfully batch decrypted ${aggregatedResults.length} amounts across ${Math.ceil(handleContractPairs.length / maxHandlesPerCall)} calls`);
+        logger.info(`Successfully batch decrypted ${aggregatedResults.length} amounts across ${Math.ceil(handleContractPairs.length / maxHandlesPerCall)} calls`);
         return aggregatedResults;
 
     } catch (error) {
