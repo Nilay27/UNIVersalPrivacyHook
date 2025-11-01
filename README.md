@@ -6,7 +6,7 @@
   <p>
     <a href="https://alpha-engine-zama.vercel.app/">🌐 Live App</a> •
     <a href="https://www.youtube.com/watch?v=APvFKz0IEps">🎥 AlphaEngine Demo (Strategies)</a> •
-    <a href="https://youtu.be/sYnSRw6ADEo">🎥 Privacy Hook Demo (Swaps & AVS)</a>
+    <a href="https://youtu.be/sYnSRw6ADEo">🎥 Privacy Hook Demo (Swaps & AVS, Old Demo)</a>
   </p>
   <p>
     <a href="#-why-alphaengine">Why AlphaEngine</a> •
